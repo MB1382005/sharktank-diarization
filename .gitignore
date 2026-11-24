@@ -1,0 +1,6 @@
+data/
+*.wav
+*.mp4
+*.flac
+*.mp3
+__pycache__/

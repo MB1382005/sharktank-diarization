@@ -1,0 +1,8 @@
+Experiment,ref_speakers,pred_speakers,DER_0.0s_%,Missed_%,FalseAlarm_%,Confusion_%,DER_0.25s_%,JER_%
+Exp 0: Baseline,3.0,3.5,24.86,23.05,1.74,0.06,22.43,20.98
+Exp 1: + Preprocessing,3.0,3.5,22.76,20.73,1.97,0.06,20.41,19.34
+Exp 2: + Math Only,3.0,3.0,10.26,6.74,3.36,0.17,8.66,9.94
+Exp 3: Preproc + Math,3.0,3.0,9.98,5.97,3.78,0.24,8.37,9.99
+Exp 4: Auto-Calibrated (Learned on DEV),3.0,3.0,9.21,3.6,5.21,0.4,7.57,9.76
+Exp 5: Frozen-Backbone Fine-Tuned,3.0,3.0,9.14,4.44,4.4,0.31,7.56,9.6
+Exp 6: + Acoustic-Energy & Collision-Free,3.0,3.0,9.09,4.32,4.42,0.36,7.54,9.57

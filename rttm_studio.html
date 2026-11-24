@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shark Tank Egypt — Pro Speaker Diarization, ASR & Ground Truth Studio v3.0</title>
+  <style>
+    :root {
+      --bg: #060911;
+      --bg-grad: radial-gradient(circle at 12% 12%, #0f1b33 0%, #060911 72%);
+      --panel: rgba(17, 25, 44, 0.95);
+      --panel-solid: #0f172a;
+      --border: #243452;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --green: #22c55e;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --purple: #a855f7;
+    }
+    * { box-sizing: border-box; font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif; }
+    html, body {
+      margin: 0; padding: 0;
+      background: var(--bg);
+      background-image: var(--bg-grad);
+      color: var(--text);
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden; /* Prevents whole page from scrolling video away! */
+    }
+    .app-shell {
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      width: 100%;
+      padding: 10px 14px;
+      gap: 8px;
+    }
+
+    /* Top Header */
+    .topbar {
+      display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 10px;
+      background: linear-gradient(90deg, rgba(15,23,42,0.98), rgba(30,41,59,0.98));
+      border: 1px solid var(--border);
+      border-radius: 10px; padding: 8px 14px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      flex-shrink: 0;
+    }
+    .brand-title { display: flex; align-items: center; gap: 10px; }
+    .brand-logo {
+      width: 36px; height: 36px; border-radius: 9px;
+      background: linear-gradient(135deg, #0284c7, #7c3aed);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 19px; font-weight: 900; color: #fff;
+      box-shadow: 0 3px 10px rgba(56,189,248,0.3);
+    }
+    h1 { margin: 0; font-size: 16.5px; color: #fff; letter-spacing: 0.2px; }
+    .sub { color: var(--muted); font-size: 11.5px; margin-top: 1px; }
+    .preset-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .autosave-pill {
+      font-size: 11px; color: #4ade80; background: rgba(34,197,94,0.12);
+      border: 1px solid rgba(34,197,94,0.35); padding: 3px 8px; border-radius: 99px;
+      font-weight: 700;
+    }
+
+    /* Speaker Analytics Strip */
+    .spk-analytics-strip {
+      display: flex; gap: 7px; overflow-x: auto; padding-bottom: 2px;
+      flex-shrink: 0;
+    }
+    .spk-card {
+      background: rgba(15, 23, 42, 0.94); border: 1px solid var(--border);
+      border-radius: 8px; padding: 5px 9px; cursor: pointer;
+      transition: all 0.15s; min-width: 155px; flex-shrink: 0;
+    }
+    .spk-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+    .spk-card.active-solo-card {
+      border: 2px solid var(--green);
+      background: rgba(22, 163, 74, 0.18);
+    }
+    .spk-card-top {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 3px;
+    }
+    .spk-meta { font-size: 10.5px; color: var(--muted); display: flex; justify-content: space-between; }
+    .spk-bar-bg {
+      height: 4px; background: #1e293b; border-radius: 99px; overflow: hidden; margin-top: 4px;
+    }
+    .spk-bar-fill { height: 100%; border-radius: 99px; }
+
+    /* Main Workspace Body: Resizable Split-Screen (Pinned Video Left | Splitter | Scrollable Table Right) */
+    .workspace-body {
+      display: flex;
+      flex-direction: row;
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+    }
+    .workspace-body.top-bottom-mode {
+      flex-direction: column;
+    }
+
+    /* Left/Top Pinned Media & Controls Dock (Resizable & NEVER scrolls off screen) */
+    .pinned-dock {
+      width: 470px;
+      min-width: 280px;
+      max-width: 78vw;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow-y: auto;
+      min-height: 0;
+      padding-right: 4px;
+    }
+    .workspace-body.top-bottom-mode .pinned-dock {
+      width: 100% !important;
+      max-width: 100%;
+      height: 390px;
+      min-height: 200px;
+      max-height: 75vh;
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 10px;
+    }
+
+    /* Draggable Splitter Handle (at the Red Mark!) */
+    .splitter-bar {
+      width: 12px;
+      flex-shrink: 0;
+      cursor: col-resize;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      position: relative;
+      z-index: 20;
+      margin: 0 2px;
+    }
+    .splitter-bar::before {
+      content: "";
+      width: 4px;
+      height: 64px;
+      border-radius: 99px;
+      background: #334155;
+      box-shadow: 0 0 6px rgba(56,189,248,0.2);
+      transition: all 0.15s ease;
+    }
+    .splitter-bar:hover::before, .splitter-bar.dragging::before {
+      background: var(--accent);
+      height: 110px;
+      width: 5px;
+      box-shadow: 0 0 12px var(--accent);
+    }
+    .workspace-body.top-bottom-mode .splitter-bar {
+      width: 100%;
+      height: 12px;
+      cursor: row-resize;
+      margin: 2px 0;
+    }
+    .workspace-body.top-bottom-mode .splitter-bar::before {
+      width: 64px;
+      height: 4px;
+    }
+    .workspace-body.top-bottom-mode .splitter-bar:hover::before,
+    .workspace-body.top-bottom-mode .splitter-bar.dragging::before {
+      width: 120px;
+      height: 5px;
+    }
+
+    /* Right/Bottom Scrollable Table Pane */
+    .table-pane {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      height: 100%;
+    }
+
+    .card {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+    }
+    .card h3 {
+      margin: 0 0 7px 0; font-size: 12.5px; color: var(--accent);
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid rgba(51,65,85,0.6); padding-bottom: 5px;
+      text-transform: uppercase; letter-spacing: 0.4px;
+    }
+    .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+    input[type="file"], input[type="text"], input[type="number"], select {
+      background: #080d18; color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; padding: 4px 8px; font-size: 12px;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--accent); }
+    input[type="number"] { width: 76px; text-align: center; font-weight: 600; }
+
+    /* Buttons */
+    button {
+      background: #2563eb; color: #fff; border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px; padding: 5px 10px; font-size: 11.5px;
+      cursor: pointer; font-weight: 600; transition: all 0.12s ease;
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    button:hover { filter: brightness(1.12); }
+    button.green { background: linear-gradient(135deg, #16a34a, #15803d); }
+    button.amber { background: linear-gradient(135deg, #d97706, #b45309); }
+    button.red { background: linear-gradient(135deg, #dc2626, #b91c1c); }
+    button.purple { background: linear-gradient(135deg, #9333ea, #7e22ce); }
+    button.cyan { background: linear-gradient(135deg, #0284c7, #0369a1); }
+    button.ghost { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+    button.sm { padding: 3px 7px; font-size: 11px; }
+
+    /* Media Player & Live Cinema Subtitle Overlay — Scales automatically when panel is widened! */
+    .player-box {
+      position: relative; background: #000; border-radius: 9px;
+      overflow: hidden; border: 1px solid var(--border);
+    }
+    audio, video { width: 100%; max-height: 48vh; display: block; background: #000; }
+    .player-box.cinema-player video { max-height: 68vh; }
+    .live-caption-bar {
+      background: linear-gradient(90deg, #080c17, #111b30, #080c17);
+      border-top: 1px solid var(--border);
+      padding: 7px 10px; min-height: 38px;
+      display: flex; align-items: center; gap: 8px;
+      font-size: 13px; font-weight: 600; color: #f1f5f9;
+    }
+    .speed-pills { display: flex; gap: 3px; align-items: center; }
+    .speed-pills button {
+      padding: 2px 6px; font-size: 10.5px; background: #0f172a; border: 1px solid #334155;
+    }
+    .speed-pills button.active-speed {
+      background: var(--accent); color: #000; font-weight: 800; border-color: var(--accent);
+    }
+
+    /* Multi-Track Visual Timeline with Zoom */
+    .timeline-wrap { margin: 6px 0; }
+    .timeline-scroll {
+      width: 100%; overflow-x: auto; border: 1px solid var(--border);
+      border-radius: 7px; background: #080d18;
+    }
+    .timeline {
+      position: relative; height: 42px; width: 100%;
+      overflow: hidden; cursor: pointer;
+    }
+    .tl-seg {
+      position: absolute; top: 4px; bottom: 4px; border-radius: 3px;
+      opacity: 0.9; font-size: 9.5px; overflow: hidden; white-space: nowrap;
+      color: #fff; padding: 2px 4px; pointer-events: none;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.2);
+    }
+    .tl-seg.dimmed { opacity: 0.12; }
+    .tl-cursor {
+      position: absolute; top: 0; bottom: 0; width: 2.5px;
+      background: #facc15; z-index: 10; pointer-events: none;
+      box-shadow: 0 0 8px #facc15;
+    }
+    .tl-time-info {
+      display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 6px;
+      font-size: 11px; color: var(--muted); margin-top: 4px;
+    }
+
+    /* Isolation Box */
+    .isolation-box {
+      background: linear-gradient(135deg, rgba(168,85,247,0.14), rgba(56,189,248,0.08));
+      border: 1px solid rgba(168,85,247,0.6);
+      border-radius: 8px; padding: 7px 10px; margin-top: 4px;
+    }
+
+    /* Table & Filters */
+    .table-toolbar {
+      display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 8px; margin-bottom: 6px;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 9px; padding: 7px 12px;
+      flex-shrink: 0;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td {
+      border-bottom: 1px solid rgba(51,65,85,0.65); padding: 6px 6px; text-align: left;
+      vertical-align: middle;
+    }
+    th {
+      background: #080d18; color: var(--muted); position: sticky; top: 0; z-index: 5;
+      font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px;
+    }
+    tr:hover { background: rgba(56, 189, 248, 0.06); }
+    tr.selected-row {
+      background: rgba(34, 197, 94, 0.2) !important;
+      outline: 1.5px solid #22c55e;
+    }
+    tr.playing-row {
+      background: rgba(56, 189, 248, 0.24) !important;
+      outline: 2px solid var(--accent);
+    }
+    tr.hidden-by-solo, tr.hidden-by-search { display: none !important; }
+    .table-wrap {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--panel-solid);
+      box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    }
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 99px;
+      font-size: 11px; font-weight: 700; color: #fff;
+      white-space: nowrap;
+    }
+    .transcript-input {
+      width: 100%; min-width: 210px; background: rgba(8,13,24,0.85);
+      color: #f1f5f9; border: 1px solid rgba(51,65,85,0.75);
+      border-radius: 5px; padding: 5px 8px; font-size: 13px;
+      direction: auto;
+    }
+    .kbd {
+      background: #080d18; border: 1px solid #475569; border-radius: 4px;
+      padding: 1px 4px; font-size: 10.5px; color: #38bdf8; font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- Top Bar with Built-In Presets, Auto-Save Indicator & Layout Switcher -->
+  <div class="topbar">
+    <div class="brand-title">
+      <div class="brand-logo">🦈</div>
+      <div>
+        <h1>Shark Tank Egypt — Pro Speaker Diarization, ASR & Ground Truth Studio <span style="font-size:11px;color:var(--accent);background:rgba(56,189,248,0.15);padding:2px 7px;border-radius:99px;">v3.0 PINNED + AUTOSAVE</span></h1>
+        <div class="sub">Pinned Video Player (Never Scrolls Away) + Persistent Auto-Save Across Refresh (Edits + Video + Playhead Position)</div>
+      </div>
+    </div>
+    <div class="preset-bar">
+      <span class="autosave-pill" id="autoSaveBadge">💾 Auto-Saved</span>
+      <button class="cyan" onclick="switchEpisodePreset('video_10_part_03')">🎬 Fino (10.5m — 184)</button>
+      <button class="purple" onclick="switchEpisodePreset('video_5_part_02')">🍪 Ammy's (14m — 283)</button>
+      <button class="green" onclick="switchEpisodePreset('video_17_part_01')">🐎 Khayal (33m — 677)</button>
+      <button class="amber" id="undoBtn" onclick="undoLastAction()" title="Undo Last Edit (Ctrl+Z)">↩ Undo (0)</button>
+      <button class="ghost" id="redoBtn" onclick="redoLastAction()" title="Redo Edit (Ctrl+Y)">↪ Redo (0)</button>
+      <button class="ghost" id="layoutModeBtn" onclick="toggleLayoutMode()" title="Switch between Side-by-Side Pinned Video and Top-Bottom Pinned Video">📐 Layout: Side-by-Side</button>
+      <button class="red sm" onclick="resetCurrentEpisodeToFactory()" title="Reset current episode edits back to factory preset">🔄 Reset Preset</button>
+    </div>
+  </div>
+
+  <!-- Speaker Analytics Cards Dashboard -->
+  <div class="spk-analytics-strip" id="speakerCardsStrip"></div>
+
+  <!-- Split-Screen Workspace: Left/Top Pinned Video & Controls | Right/Bottom Scrollable Table -->
+  <div class="workspace-body" id="workspaceBody">
+
+    <!-- Pinned Video & Controls Dock (NEVER scrolls away when table scrolls!) -->
+    <div class="pinned-dock" id="pinnedDock">
+      <div class="card">
+        <h3>
+          <span>1. Pinned Video Player & Timeline</span>
+          <span id="summaryStats" style="color:var(--amber);font-size:11.5px;text-transform:none;">0 Turns | 0 Speakers</span>
+        </h3>
+        <div class="row">
+          <label style="font-size:11.5px;color:var(--muted);">Video/Audio:</label>
+          <input type="file" id="mediaInput" accept="audio/*,video/*" style="max-width:175px;" />
+          <label style="font-size:11.5px;color:var(--muted);">RTTM/CSV:</label>
+          <input type="file" id="labelInput" accept=".rttm,.txt,.csv" style="max-width:155px;" />
+          <button class="ghost sm" onclick="toggleCinemaVideoSize()">🎬 Size</button>
+        </div>
+
+        <div class="player-box" id="playerBox">
+          <video id="player" controls></video>
+          <div class="live-caption-bar" id="liveCaptionBar">
+            <span class="badge" id="liveSpkBadge" style="background:#334155;">Ready</span>
+            <span id="liveTranscriptText" style="flex:1;color:#e2e8f0;direction:auto;">Select video once — it auto-restores even if you refresh (F5)!</span>
+          </div>
+        </div>
+
+        <div class="timeline-wrap">
+          <div class="timeline-scroll">
+            <div class="timeline" id="timeline" title="Click anywhere on timeline to seek">
+              <div class="tl-cursor" id="tlCursor"></div>
+            </div>
+          </div>
+          <div class="tl-time-info">
+            <span id="curTimeLabel" style="color:var(--accent);font-weight:700;">00:00.00 (0.00s)</span>
+            <div class="speed-pills">
+              <span>Speed:</span>
+              <button onclick="setSpeed(0.75, this)">0.75x</button>
+              <button class="active-speed" onclick="setSpeed(1.0, this)">1x</button>
+              <button onclick="setSpeed(1.25, this)">1.25x</button>
+              <button onclick="setSpeed(1.5, this)">1.5x</button>
+              <button onclick="setSpeed(2.0, this)">2x</button>
+            </div>
+            <div class="speed-pills">
+              <span>Zoom:</span>
+              <button class="active-speed" onclick="setTimelineZoom(1, this)">1x</button>
+              <button onclick="setTimelineZoom(2, this)">2x</button>
+              <button onclick="setTimelineZoom(4, this)">4x</button>
+              <button onclick="setTimelineZoom(8, this)">8x</button>
+            </div>
+            <label style="cursor:pointer;color:#a7f3d0;">
+              <input type="checkbox" id="autoFollowChk" checked /> 📍 Auto-Follow
+            </label>
+          </div>
+        </div>
+
+        <div class="isolation-box">
+          <div class="row" style="margin-bottom:4px;justify-content:space-between;">
+            <label style="color:#f3e8ff;font-weight:700;cursor:pointer;font-size:12px;">
+              <input type="checkbox" id="soloSpeakerModeChk" onchange="onSoloModeToggle()" />
+              🎯 Solo Speaker Isolation (Click any speaker card or 🎯 badge)
+            </label>
+            <div>
+              <span id="soloStatusBadge" style="color:var(--green);font-size:11.5px;font-weight:700;margin-right:4px;"></span>
+              <button class="red sm" id="clearSoloBtn" style="display:none;" onclick="clearSoloFilter()">Show All ✖</button>
+            </div>
+          </div>
+          <div class="row" style="margin-bottom:0;justify-content:space-between;">
+            <label style="color:#bae6fd;font-size:11.5px;cursor:pointer;">
+              <input type="checkbox" id="vocalFilterChk" onchange="toggleWebAudioVocalFilter()" />
+              🎙️ Studio Vocal Filter (Suppress Background Music)
+            </label>
+            <button class="purple sm" id="playAllSoloBtn" style="display:none;" onclick="playAllTurnsOfSoloSpeaker()">
+              ▶ Play All Solo Turns
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick Controls & Export Card -->
+      <div class="card">
+        <h3>
+          <span>2. Split, Snap, Rename & Export</span>
+          <span style="font-size:11px;color:var(--muted);text-transform:none;">ID: <input type="text" id="fileUri" value="video_10_part_03" style="width:125px;padding:2px 5px;" onchange="saveWorkspaceState()" /></span>
+        </h3>
+
+        <div class="row" style="background:rgba(8,13,24,0.65);padding:6px 8px;border-radius:7px;border:1px solid var(--border);">
+          <button class="amber sm" onclick="splitSelectedAtCurrentTime()" title="Split segment at playhead (Hotkey: S)">✂️ Split Here <span class="kbd">S</span></button>
+          <button class="ghost sm" onclick="snapSelectedToCurrentTime('start')">[ Set Start</button>
+          <button class="ghost sm" onclick="snapSelectedToCurrentTime('end')">Set End ]</button>
+          <button class="ghost sm" onclick="addSegmentAtCurrentTime()">+ Add Turn</button>
+          <label style="cursor:pointer;color:var(--accent);font-size:11.5px;margin-left:auto;">
+            <input type="checkbox" id="loopSegmentChk" /> 🔁 Loop
+          </label>
+        </div>
+
+        <div class="row">
+          <span style="color:var(--muted);font-size:11px;width:100%;">1-Click Assign Speaker to Selected Row (Hotkeys <span class="kbd">1</span>–<span class="kbd">9</span>):</span>
+          <div id="quickSpeakerButtons" style="display:flex;gap:4px;flex-wrap:wrap;"></div>
+        </div>
+
+        <div class="row">
+          <label style="font-size:11.5px;">Rename All:</label>
+          <select id="oldSpkSelect"></select>
+          <input type="text" id="newSpkInput" placeholder="New_Name" style="width:120px;" />
+          <button class="cyan sm" onclick="renameSpeakerGlobal()">Apply</button>
+        </div>
+
+        <div class="row" style="margin-bottom:0;padding-top:4px;border-top:1px solid rgba(51,65,85,0.6);">
+          <button class="green sm" onclick="exportRTTM()">⬇ .RTTM</button>
+          <button class="cyan sm" onclick="exportCSV()">⬇ .CSV</button>
+          <button class="purple sm" onclick="exportJSON()">⬇ .JSON</button>
+          <button class="amber sm" onclick="exportAudacity()">⬇ .TXT</button>
+          <button class="ghost sm" onclick="sortSegments()" style="margin-left:auto;">Sort ⇅</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Draggable Resizer Splitter Bar (Drag Left/Right or Double-Click to Reset) -->
+    <div class="splitter-bar" id="splitterBar" title="Drag left or right to resize Video Panel vs Table (Double-click to reset)"></div>
+
+    <!-- Right/Bottom Independent Scrollable Table Pane -->
+    <div class="table-pane">
+      <div class="table-toolbar">
+        <div style="display:flex;gap:8px;align-items:center;flex:1;">
+          <span style="font-weight:700;color:var(--accent);font-size:12.5px;">🔍 Filter:</span>
+          <input type="text" id="searchInput" placeholder="Search any Arabic/English word or speaker..." style="flex:1;max-width:380px;" oninput="applySearchFilter()" />
+          <button class="ghost sm" onclick="document.getElementById('searchInput').value='';applySearchFilter();">Clear ✖</button>
+        </div>
+        <div style="font-size:11.5px;color:var(--muted);">
+          <span class="kbd">Space</span> Play/Stop | <span class="kbd">S</span> Split | <span class="kbd">1..9</span> Speaker | <span class="kbd">Ctrl+Z</span> Undo
+        </div>
+      </div>
+
+      <div class="table-wrap" id="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:42px;">#</th>
+              <th style="width:125px;">Play Turn</th>
+              <th style="width:195px;">Speaker (🎯 Solo)</th>
+              <th>Spoken Transcript (Arabic / English — Auto-Saved)</th>
+              <th style="width:155px;">Start (s)</th>
+              <th style="width:155px;">End (s)</th>
+              <th style="width:60px;">Dur</th>
+              <th style="width:138px;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="segTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const BUILTIN_PRESETS = {"video_10_part_03": [{"start": 0.0, "end": 2.3, "speaker": "Ibrahim_Safwat", "text": "Hi sharks. أنا إبراهيم صفوت مؤسس fino."}, {"start": 2.74, "end": 4.7, "speaker": "Ali_ElGayar", "text": "وأنا علي جيار شريك مؤسس fino."}, {"start": 5.02, "end": 9.24, "speaker": "Ibrahim_Safwat", "text": "احنا النهاردة جايين طالبين 5 مليون جنيه مقابل 12.5% من قيمة الشركة."}, {"start": 10.06, "end": 12.44, "speaker": "Ibrahim_Safwat", "text": "أنا كل يوم لما بصحى الصبح بفكر في حاجتين"}, {"start": 13.1, "end": 14.58, "speaker": "Ibrahim_Safwat", "text": "هلبس ايه؟ وهفطر ايه؟"}, {"start": 15.16, "end": 18.56, "speaker": "Ibrahim_Safwat", "text": "هلبس ايه؟ مش يعني واضح إن مش بتاعتنا النهاردة. هفطر ايه؟"}, {"start": 19.04, "end": 26.74, "speaker": "Ibrahim_Safwat", "text": "بطلب عادة حاجة من الاتنين يا إما فول وطعمية يا إما بطلب سندوتشات cold cuts وكده من ال cafes أو applications delivery."}, {"start": 27.34, "end": 32.42, "speaker": "Ibrahim_Safwat", "text": "بس للأسف ممكن ال budget بتاعتي متسمحليش إن أنا النوع التاني من السندوتشات ده أقدر أطلبه كل يوم."}, {"start": 33.06, "end": 38.48, "speaker": "Ibrahim_Safwat", "text": "ففكرت زمان كان عندنا العيش الفينو السخن الطازة ده كنا بنحط جواه أي حاجة كانت بتبقى حلوة."}, {"start": 38.98, "end": 39.32, "speaker": "Ibrahim_Safwat", "text": "جبن،"}, {"start": 39.82, "end": 45.96, "speaker": "Ibrahim_Safwat", "text": "بيض بالبسطرمة، فراخ بانيه بعد البحر في الساحل أو حتى واحنا قاعدين بنتعشى بالليل في البيت كانت بتبقى خطيرة."}, {"start": 46.52, "end": 48.56, "speaker": "Ibrahim_Safwat", "text": "ففكرت هو ليه الكلام ده مابقاش موجود دلوقتي."}, {"start": 49.3, "end": 54.72, "speaker": "Ali_ElGayar", "text": "خصوصا واحنا بنعمل research على ال concept لقينا gap في حتة السندوتشات اللي إبراهيم كان بيتكلم عليها دي"}, {"start": 55.2, "end": 56.94, "speaker": "Ali_ElGayar", "text": "أو كمان سندوتشات البقالة بتاعة زمان."}, {"start": 57.72, "end": 61.2, "speaker": "Ali_ElGayar", "text": "ولقينا إن مفيش حد بيعمل النوع ده من الأكل بالطريقة دي."}, {"start": 61.82, "end": 67.06, "speaker": "Ali_ElGayar", "text": "brand كبير ب menu متنوع أقدر ألاقيه حواليا في أي حتة محل drive thru و delivery."}, {"start": 67.56, "end": 70.2, "speaker": "Ali_ElGayar", "text": "فقررنا إن احنا نعمل الفينو اللي عارفينه."}, {"start": 70.84, "end": 78.12, "speaker": "Ali_ElGayar", "text": "سندوتشات البيت والبقالة بتاعة زمان. بس بطعم دلوقتي ب quality حلوة في العيش الفينو السخن اللي بنخبزه عندنا"}, {"start": 78.6, "end": 83.66, "speaker": "Ali_ElGayar", "text": "وبأسعار مناسبة أقدر أفطر أو أتغدى أو أتعشى بيها كل يوم سواء وأنا في الشغل أو في البيت."}, {"start": 84.1, "end": 86.8, "speaker": "Ibrahim_Safwat", "text": "أيوة لو حد بيحب الفراخ بانيه أو يعني أي حاجة."}, {"start": 86.96, "end": 87.66, "speaker": "Ali_ElGayar", "text": "ممكن تجربه يعني."}, {"start": 87.66, "end": 88.42, "speaker": "Ibrahim_Safwat", "text": "اتفضلوا برضو."}, {"start": 88.5, "end": 89.56, "speaker": "Ayman_Abbas", "text": "احنا عارفين إن حضرتك بتحب الفراخ."}, {"start": 89.62, "end": 89.76, "speaker": "Mohamed_Farouk", "text": "اه"}, {"start": 90.28, "end": 93.42, "speaker": "Ibrahim_Safwat", "text": "يعني لك مخصوص. أنا أعرف علي من أكتر من 20 سنة."}, {"start": 93.98, "end": 96.48, "speaker": "Ibrahim_Safwat", "text": "احنا بدأنا مع بعض ومع شركاء تانيين"}, {"start": 97.52, "end": 105.72, "speaker": "Ibrahim_Safwat", "text": "حاجة اسمها Cairo Runners. Cairo Runners دي أكبر community للـ الجري في مصر، وبنعمل marathons في كل مصر بيحضرها آلاف المصريين."}, {"start": 106.88, "end": 112.34, "speaker": "Ibrahim_Safwat", "text": "أنا برضو زي ما أنا في ال founding team بتاع fino. أنا في ال founding team بتاع brand specialty coffee اسمه Daily Dose."}, {"start": 112.8, "end": 113.92, "speaker": "Ibrahim_Safwat", "text": "Daily Dose بقاله 3 سنين."}, {"start": 114.04, "end": 114.38, "speaker": "Amr_Abouesh", "text": "اسمه ايه؟"}, {"start": 114.62, "end": 115.36, "speaker": "Ibrahim_Safwat", "text": "اسمه Daily Dose."}, {"start": 116.24, "end": 118.68, "speaker": "Ibrahim_Safwat", "text": "اه بقاله 3 سنين. فاتحين دلوقتي 9 فروع."}, {"start": 119.26, "end": 120.14, "speaker": "Ibrahim_Safwat", "text": "احنا fino بقالنا سنة."}, {"start": 121.1, "end": 126.34, "speaker": "Ibrahim_Safwat", "text": "عندنا فرع واحد حاليا بيعمل حوالي مليون جنيه في الشهر. وعندنا فرعين كمان خلاص في المراحل النهائية للتجهيز."}, {"start": 128.06, "end": 132.92, "speaker": "Ibrahim_Safwat", "text": "ده بالنسبة لـ-لـ fino حاليا. احنا 12 واحد في ال head office في fino واحنا 6 شركاء."}, {"start": 133.5, "end": 139.32, "speaker": "Ali_ElGayar", "text": "احنا برضو لما جينا نعمل fino كنا مكناش عايزين يبقى مجرد مطعم. كنا عايزين يدخل حياة الناس بطريقة مختلفة."}, {"start": 139.86, "end": 142.22, "speaker": "Ali_ElGayar", "text": "فبدأنا نفكر طيب مين ممكن يكون محتاج ال concept ده؟"}, {"start": 142.76, "end": 151.18, "speaker": "Ali_ElGayar", "text": "لقينا الموظف في شركته وهو بيفكر هيفطر أو يتغدى أو يسناك ايه في وسط اليوم. أو ال-الأم اللي بتفكر تعمل سندوتشات ايه لابنها وهو رايح المدرسة."}, {"start": 151.78, "end": 157.88, "speaker": "Ali_ElGayar", "text": "أو حتى الشاب اللي في الجامعة، أو الراجل اللي عايز يعمل عزومة أو حفلة لابنه في النادي، وغيرهم كتير."}, {"start": 158.36, "end": 170.24, "speaker": "Ali_ElGayar", "text": "بدأنا بالشركات بنروح، بنروح للشركات لحد عندهم. حاليا عندنا 40 شركة متعاقدة معانا. لو الموظف دخل بال email بتاع الشغل بتاعه على ال application بتاع fino وعمل ال order بيجيله الخصم"}, {"start": 170.3, "end": 173.86, "speaker": "Ali_ElGayar", "text": "الخاص بشركته. وده حاليا بيمثل 40% من ال revenue بتاعنا."}, {"start": 174.46, "end": 177.46, "speaker": "Ibrahim_Safwat", "text": "احنا كمان عملنا fino catering. وده جزئين في B2B"}, {"start": 177.96, "end": 189.58, "speaker": "Ibrahim_Safwat", "text": "و B2C. ال B2B ده بيبقى لل events الكبيرة زي المعارض والمؤتمرات وال bazars. ال B2C أكتر للعزومات الصغيرة وال business meetings وال receptions. قريب كمان شاء الله السنة الجاية هنبدأ"}, {"start": 189.66, "end": 194.0, "speaker": "Ibrahim_Safwat", "text": "نعمل subscriptions أو اشتراكات للموظفين في ال، في المكاتب"}, {"start": 194.9, "end": 198.08, "speaker": "Ibrahim_Safwat", "text": "أسبوعية وشهرية. الموظف يروح الشغل الصبح"}, {"start": 198.54, "end": 199.72, "speaker": "Ibrahim_Safwat", "text": "يلاقي مشروبه"}, {"start": 200.36, "end": 206.98, "speaker": "Ibrahim_Safwat", "text": "واكله على مكتبه من غير ما يفكر. خلاص هتبقى حاجة automatic يعني. plus ماشيين في project برضو lunch boxes لطلبة المدارس."}, {"start": 207.22, "end": 212.18, "speaker": "Ali_ElGayar", "text": "واحنا عندنا حاليا 3 franchise requests. بس احنا قررنا ن-ن-نزقهم شوية."}, {"start": 212.36, "end": 212.48, "speaker": "Ibrahim_Safwat", "text": "اه."}, {"start": 212.54, "end": 216.02, "speaker": "Ali_ElGayar", "text": "مش عايزين نخش في القصة دي دلوقتي. وبنعمل collaborations مع brands مصرية."}, {"start": 216.5, "end": 221.76, "speaker": "Ali_ElGayar", "text": "آخرها عملنا collaboration مع Domti. وعملنا menu بتاع fino و Domti وكان لذيذ أوي."}, {"start": 222.68, "end": 227.26, "speaker": "Ibrahim_Safwat", "text": "أغلبو ليه علاقة بالجبن وكده. وكانت سندوتشات مخصوصة لل menu دي. كانت حاجة لسه كانت من شهر ونص."}, {"start": 228.08, "end": 236.18, "speaker": "Ali_ElGayar", "text": "احنا ال model بتاعنا عبارة عن central kitchens ومحلات صغيرة. وده الحمد لله بيساعدنا على التوسع بسرعة. هدفنا السنة الجاية إن شاء الله نوصل ل 5 فروع و"}, {"start": 236.66, "end": 242.56, "speaker": "Ali_ElGayar", "text": "cloud kitchens. وفي خلال 5 سنين نوصل ل 50 فرع و cloud kitchen في 3 بلاد مختلفة منهم بلد غير عربية."}, {"start": 243.16, "end": 249.8, "speaker": "Ali_ElGayar", "text": "آآآ اللي بدأ كفكرة ما بين ناس صحاب بيحبوا طعم زمان. دلوقتي بيبيع آلاف السندوتشات كل شهر. وده لسه أول خطوة في مشوار fino."}, {"start": 250.32, "end": 254.02, "speaker": "Ali_ElGayar", "text": "وباستثماراتكم fino ممكن يبقى brand مصري قابل للتوسع لأي حتة في العالم."}, {"start": 254.58, "end": 255.0, "speaker": "Ali_ElGayar", "text": "شكرًا."}, {"start": 255.64, "end": 256.46, "speaker": "Yasmine_Khamis", "text": "bravo bravo bravo."}, {"start": 256.86, "end": 257.96, "speaker": "Ayman_Abbas", "text": "أولًا أهلا بيكم."}, {"start": 258.86, "end": 262.38, "speaker": "Ayman_Abbas", "text": "الحاجة يعني شكلها حلو جدًا وطعمها حلو أوي."}, {"start": 262.86, "end": 267.9, "speaker": "Ayman_Abbas", "text": "وفكرة إنك ترجع الفينو ال-المصري بتاعنا"}, {"start": 268.42, "end": 279.82, "speaker": "Ayman_Abbas", "text": "آآآ تعمل له repacking بالشكل الحلو ده. I'm very proud. وكلنا very proud من اللي أنتو عاملينه. بس لو تشرح لنا كده شوية على الأرقام آآآ"}, {"start": 280.56, "end": 282.44, "speaker": "Ayman_Abbas", "text": "بتبيعوا في السنة ب 12 مليون."}, {"start": 282.8, "end": 282.9, "speaker": "Ibrahim_Safwat", "text": "اه."}, {"start": 282.98, "end": 283.0, "speaker": "Ayman_Abbas", "text": "و..."}, {"start": 284.74, "end": 285.66, "speaker": "Ibrahim_Safwat", "text": "قبل الأرقام بس لحاجة قلتها."}, {"start": 285.68, "end": 287.16, "speaker": "Ayman_Abbas", "text": "بتكسبوا ايه و طالبين ايه."}, {"start": 287.6, "end": 296.9, "speaker": "Ibrahim_Safwat", "text": "ماشي ممكن أرجع لحتة لأن احنا تعبنا أوي في حتة ال branding دي بالذات. احنا رحنا تقريبًا لأكبر marketing agency في مصر. بس الكلام ده كان من 3 سنين. احنا قعدنا كتير في ال research بتاع ال concept وكده."}, {"start": 297.38, "end": 309.34, "speaker": "Ibrahim_Safwat", "text": "ورحنا وقعدنا معاهم كذا مرة. احنا كنا عايزين ننقلهم الفكرة اللي عندنا بالظبط. طلعنا draft والتاني والتالت. بس احنا في الآخر كنا عايزين فعلًا تبقى حاجة بت-بت-بتحكي عن زمان بس ب style دلوقتي. احنا بيجي لنا كتير Gen Z والناس اللي"}, {"start": 309.38, "end": 321.16, "speaker": "Ibrahim_Safwat", "text": "هي لسه بتبتدي شغله كده بياكلوا من عندنا برضو. مش اللي هو الناس ال-اللي هي عصرة البقالة بس يعني. فدي حاجة احنا قعدنا عليها كتير عشان نعرف نطلع branding يليق برضو على الـ-اللي احنا عايزين نطلعه. يعني يبقى فيه feeling للـ"}, {"start": 321.2, "end": 321.7, "speaker": "Ibrahim_Safwat", "text": "brand نفسه."}, {"start": 321.84, "end": 321.86, "speaker": "Yasmine_Khamis", "text": "branding"}, {"start": 321.88, "end": 324.02, "speaker": "Ibrahim_Safwat", "text": "من أول ما تخش المحل ال packaging كله يعني."}, {"start": 324.08, "end": 324.74, "speaker": "Yasmine_Khamis", "text": "ال branding هايل."}, {"start": 325.06, "end": 325.74, "speaker": "Ibrahim_Safwat", "text": "نسيت سلام."}, {"start": 325.88, "end": 329.3, "speaker": "Ali_ElGayar", "text": "شكرًا. بالنسبة للأرقام احنا حاليًا بنعمل مليون في الشهر."}, {"start": 329.9, "end": 334.28, "speaker": "Ali_ElGayar", "text": "آآآ في استثمارات اتضخت في فرعين تانيين. plus بنعمل partnership مع central kitchen."}, {"start": 334.98, "end": 338.5, "speaker": "Ali_ElGayar", "text": "آآآ فالفرعين الجايين دول خلاص في المراحل النهائية في التجهيز. آآآ"}, {"start": 338.96, "end": 343.98, "speaker": "Ali_ElGayar", "text": "فاحنا بنعمل مليون في الشهر. طبعًا احنا آآآ بدأنا أول 3 شهور كانت لسه الدنيا بالراحة شوية بدأنا npick up."}, {"start": 344.7, "end": 353.8, "speaker": "Ali_ElGayar", "text": "آآآ ال margins بتاعتنا آآآ احنا overall السنة بن break even. بس احنا بدأنا ب positive. يعني بدأنا الأول ب negative وبعد كده positive دلوقتي. يعني السنة-- الشهر اللي فات عملنا 10%."}, {"start": 354.28, "end": 358.68, "speaker": "Ali_ElGayar", "text": "احنا targeting من غير-- احنا برضو معينين ناس كتيرة في ال، في ال head office. عشان احنا بن target ال scale."}, {"start": 358.74, "end": 359.06, "speaker": "Ayman_Abbas", "text": "بنفان."}, {"start": 359.06, "end": 364.9, "speaker": "Ali_ElGayar", "text": "في ال catering وكده. فده ممكن يكون بياكل شوية من margins. مع ال scale ال margins أو ال expenses دي هتقل."}, {"start": 365.44, "end": 376.68, "speaker": "Ali_ElGayar", "text": "فا احنا targeting السنة الجاية شاء الله نعمل تمانية وأربعين مليون. آآ يعني احنا الـ الفرعين اللي جايين دول كل واحد هيعمل فيه مليون ونص إن شاء الله. بلس خمسميت ألف جاية من الـ catering دول تلاتة ونص بلس المليون الموجودة."}, {"start": 377.18, "end": 383.44, "speaker": "Ali_ElGayar", "text": "فدول أربعة ونص أربعة أربعة ونص. احنا متارجتين خمسين مليون السنة اللي جاية إن شاء الله بـ margin خمستاشر في المية. وده conservative"}, {"start": 383.92, "end": 388.14, "speaker": "Ali_ElGayar", "text": "projection يعني احنا ممكن نعمل أكتر من كده إن شاء الله. بس احنا شغالين على حتة conservative شوية."}, {"start": 388.62, "end": 390.5, "speaker": "Yasmine_Khamis", "text": "عندي سؤال هل بتبيعوا العيش فينو لوحده؟"}, {"start": 391.2, "end": 397.4, "speaker": "Ibrahim_Safwat", "text": "في الـ project الجاي احنا خلاص بنفتح الفرع الجديد وهنعمل كذا حاجة فينو وبقسماط بجبنة. يعني في شوية."}, {"start": 397.42, "end": 399.22, "speaker": "Yasmine_Khamis", "text": "يعني هتعملوا bakery برضو."}, {"start": 399.34, "end": 406.88, "speaker": "Ibrahim_Safwat", "text": "آه احنا في central kitchen بتاعنا خلاص بيخلص. الـ central kitchen ده هيبقى فيه الـ bakery. بس احنا بنخبز أصلًا العيش عندنا كده كده."}, {"start": 406.9, "end": 407.72, "speaker": "Yasmine_Khamis", "text": "بالظبط قصدي هل بتزود-"}, {"start": 407.72, "end": 410.78, "speaker": "Ibrahim_Safwat", "text": "نبتدي نزود حتة الـ bakery دي لإن أصلًا في ناس بتيجي بتطلب من عندنا عيش حاجة."}, {"start": 410.82, "end": 412.0, "speaker": "Yasmine_Khamis", "text": "قلت لي عندكم فرع. فين الفرع؟"}, {"start": 412.16, "end": 413.92, "speaker": "Ibrahim_Safwat", "text": "في مول مجرى في الشيخ زايد."}, {"start": 414.1, "end": 415.1, "speaker": "Yasmine_Khamis", "text": "هو ده اللي بيقدم في"}, {"start": 415.7, "end": 416.2, "speaker": "Yasmine_Khamis", "text": "الـ app الطلبات؟"}, {"start": 416.44, "end": 417.72, "speaker": "Ibrahim_Safwat", "text": "هو ده اه اه هو ده اه."}, {"start": 418.28, "end": 420.02, "speaker": "Ali_ElGayar", "text": "الفرعين التانيين في التجمع إن شاء الله."}, {"start": 420.08, "end": 421.3, "speaker": "Ibrahim_Safwat", "text": "في أول التجمع وآخره في الـ-"}, {"start": 421.32, "end": 422.4, "speaker": "Ali_ElGayar", "text": "بلس إن احنا عايزين نعمل"}, {"start": 422.94, "end": 423.56, "speaker": "Ali_ElGayar", "text": "central kitchen"}, {"start": 424.26, "end": 428.92, "speaker": "Ali_ElGayar", "text": "و cloud kitchens. cloud kitchen في المعادي و cloud kitchen في مدينة نصر، مصر الجديدة و cloud kitchen في الزمالك."}, {"start": 428.98, "end": 440.82, "speaker": "Ibrahim_Safwat", "text": "هو ميزة فينو كمان إنك إنت مش لازم تعمل آآ يعني الـ scalability أسرع شوية من برأ-- من concepts تانية حتى زي Billy Dough's مثلًا أو كده. لإن هو أنت ممكن تكبر بيه بـ cloud kitchens عادي. لإن هو أنت ممكن وأنت قاعد في"}, {"start": 440.84, "end": 442.34, "speaker": "Ibrahim_Safwat", "text": "الشغل الصبح تطلبه أنا مش لازم أروح."}, {"start": 442.84, "end": 454.6, "speaker": "Ibrahim_Safwat", "text": "بالليل عايز أتعشى في البيت مع صحابي أو مع أهلي أو أيًا كان ممكن أطلبه برضو. فهو حتى الفرع بتاع مجرى هو كله خمسة وأربعين متر مربع. فـ فأنا مش لازم يبقى عندي فرع كبير. بالعكس أنا ممكن فروع صغيرة بلس cloud"}, {"start": 454.64, "end": 455.2, "speaker": "Ibrahim_Safwat", "text": "kitchens يعني."}, {"start": 455.4, "end": 467.36, "speaker": "Ali_ElGayar", "text": "بلس برضو آآ أنا آسف بيجيلنا ساعات requests يعني جالنا request من شركة multi national بتاعة telecom فيها تلات آلاف موظف إن احنا نفتح عندهم جوة مكان يـ serve الموظفين ويبقى cloud kitchen. هم وافقين كمان هو يبقى cloud kitchen"}, {"start": 467.42, "end": 469.14, "speaker": "Ali_ElGayar", "text": "للـ business district كله اللي حواليه."}, {"start": 469.7, "end": 475.3, "speaker": "Ali_ElGayar", "text": "فـ فده برضو حاجة يعني أما يبقى عندنا central kitchen نعرف نروح نفتح حتت صغيرة أو kiosks صغيرة في حتت كتيرة يعني."}, {"start": 475.76, "end": 477.02, "speaker": "Yasmine_Khamis", "text": "All Egyptian home deli."}, {"start": 477.08, "end": 477.36, "speaker": "Ibrahim_Safwat", "text": "أيوة."}, {"start": 478.4, "end": 479.96, "speaker": "Yasmine_Khamis", "text": "اشرح لي الـ experience بتاعة الـ deli."}, {"start": 480.64, "end": 484.78, "speaker": "Ibrahim_Safwat", "text": "experience الـ deli هي experience الـ deli تاني من أول يعني شايفة هنا ده."}, {"start": 485.12, "end": 487.0, "speaker": "Ayman_Abbas", "text": "هو الـ experience بتاعة الـ deli هو"}, {"start": 487.56, "end": 489.76, "speaker": "Ayman_Abbas", "text": "الـ الجبنة الرومي اللي بالبسطرمة."}, {"start": 490.48, "end": 490.66, "speaker": "Ibrahim_Safwat", "text": "بالظبط."}, {"start": 490.66, "end": 491.62, "speaker": "Ayman_Abbas", "text": "البيض بالبسطرمة."}, {"start": 491.76, "end": 492.52, "speaker": "Yasmine_Khamis", "text": "مستفز أوي."}, {"start": 492.9, "end": 495.16, "speaker": "Ayman_Abbas", "text": "The Egyptian our our home food."}, {"start": 495.26, "end": 495.4, "speaker": "Ibrahim_Safwat", "text": "صح."}, {"start": 495.8, "end": 496.02, "speaker": "Ayman_Abbas", "text": "آآآ"}, {"start": 497.32, "end": 497.98, "speaker": "Ayman_Abbas", "text": "طلعناه."}, {"start": 498.9, "end": 500.52, "speaker": "Yasmine_Khamis", "text": "هي قصدها الـ retail experience صح؟"}, {"start": 500.54, "end": 500.9, "speaker": "Ibrahim_Safwat", "text": "الـ retail experience."}, {"start": 500.94, "end": 502.98, "speaker": "Yasmine_Khamis", "text": "هي قصدها الـ retail experience بتاع الـ deli."}, {"start": 504.52, "end": 504.78, "speaker": "Ibrahim_Safwat", "text": "والـ merch."}, {"start": 505.14, "end": 506.06, "speaker": "Yasmine_Khamis", "text": "تشبه الـ aesthetic ده؟"}, {"start": 506.58, "end": 507.84, "speaker": "Ibrahim_Safwat", "text": "احنا ده شكل المحل عندنا أصلًا."}, {"start": 507.96, "end": 509.7, "speaker": "Farida_Khamis", "text": "هذا حلو أوي. تاني سؤال-"}, {"start": 509.76, "end": 519.0, "speaker": "Ibrahim_Safwat", "text": "يعني أنت تخش المحل بتحس شوية إنك في deli فعلًا place بس modernized شوية. بتلاقي الميزان بتلاقي حاجات البسطرمة والجبن. بتلاقي فوق العلب بتاعة التونة والصلصة وكده."}, {"start": 519.1, "end": 527.56, "speaker": "Yasmine_Khamis", "text": "فيه restaurants تانية عاملين قريبة قريبة من الموضوع. مش عايزة أقول اسم بس اتشهرت أوي بسبب الـ experience بتاع المطعم."}, {"start": 527.66, "end": 527.82, "speaker": "Ibrahim_Safwat", "text": "اوكي."}, {"start": 527.82, "end": 527.96, "speaker": "Yasmine_Khamis", "text": "والـ-"}, {"start": 528.48, "end": 529.52, "speaker": "Ibrahim_Safwat", "text": "الـ merch."}, {"start": 530.56, "end": 534.82, "speaker": "Yasmine_Khamis", "text": "آآ يعني الـ offering. يعني مثلًا بيعملوا سـ-- ده عندك مثلًا سعد مستاير مربى."}, {"start": 535.04, "end": 535.3, "speaker": "Ibrahim_Safwat", "text": "حلو."}, {"start": 535.88, "end": 536.24, "speaker": "Yasmine_Khamis", "text": "عملوا"}, {"start": 537.04, "end": 537.94, "speaker": "Yasmine_Khamis", "text": "في الـ deli بتاعهم"}, {"start": 538.58, "end": 540.48, "speaker": "Yasmine_Khamis", "text": "مربى. تيجي تشتري المربى لوحدها."}, {"start": 540.56, "end": 540.76, "speaker": "Ibrahim_Safwat", "text": "صح."}, {"start": 541.22, "end": 541.6, "speaker": "Ali_ElGayar", "text": "ده موجود"}, {"start": 542.06, "end": 542.62, "speaker": "Ali_ElGayar", "text": "في الـ plan بتاعنا."}, {"start": 542.86, "end": 543.28, "speaker": "Ibrahim_Safwat", "text": "زي العيشة."}, {"start": 543.72, "end": 544.02, "speaker": "Yasmine_Khamis", "text": "فاهمة قصدي؟"}, {"start": 544.06, "end": 544.8, "speaker": "Ibrahim_Safwat", "text": "وعامل طماطري."}, {"start": 544.82, "end": 545.14, "speaker": "Yasmine_Khamis", "text": "أيوة أيوة."}, {"start": 545.7, "end": 547.14, "speaker": "Yasmine_Khamis", "text": "spices يعني التوابل."}, {"start": 547.2, "end": 549.24, "speaker": "Ibrahim_Safwat", "text": "يعني لو يعني في في لبنان حاجة كده"}, {"start": 550.32, "end": 553.84, "speaker": "Ibrahim_Safwat", "text": "زي إما شي فدلي ما أنا مش عارف ينفع أقول أسامي ولا لا. بس يعني."}, {"start": 554.5, "end": 554.98, "speaker": "Yasmine_Khamis", "text": "ده اللي هقوله."}, {"start": 555.02, "end": 557.04, "speaker": "Ibrahim_Safwat", "text": "هو على فكرة خطير يعني. أنا روحته اه"}, {"start": 557.54, "end": 562.54, "speaker": "Ibrahim_Safwat", "text": "اه عامل الـ experience دي. وده في الـ expansion الجاي. لإن ناس كتيرة بتروح بتبقى عايزة الحاجات دي أصلًا. وده"}, {"start": 563.02, "end": 565.98, "speaker": "Ibrahim_Safwat", "text": "احنا أصلًا من الأول عايزينه. بس قلنا نركز الأول في الـ menu. احنا برضو الـ menu"}, {"start": 566.52, "end": 573.42, "speaker": "Ibrahim_Safwat", "text": "هي اه بيض وبسطرمة وجبن وكده. بس احنا برضو الشيف قعدنا معاه كتير أوي. وفي الـ menu engineering برضو إن هو ما يبقاش"}, {"start": 573.9, "end": 576.96, "speaker": "Ibrahim_Safwat", "text": "جبنة رومي اللي بتعملها في البيت. يبقى فيه عليها pesto sauce معين"}, {"start": 577.62, "end": 583.12, "speaker": "Ibrahim_Safwat", "text": "طماطم بطريقة معينة. فاللي هو أحس إن أنا باكل سندوتشات بيتي. بس إيه ده؟ لأ مش ده زي اللي أنا بعمله في البيت بالظبط."}, {"start": 583.2, "end": 584.74, "speaker": "Ali_ElGayar", "text": "يا touch كده اه modernized شوية."}, {"start": 584.76, "end": 585.44, "speaker": "Amr_Abouesh", "text": "انتو كام واحد"}, {"start": 586.08, "end": 586.58, "speaker": "Amr_Abouesh", "text": "في الشركة دي؟"}, {"start": 586.9, "end": 589.94, "speaker": "Ibrahim_Safwat", "text": "الشركاء ستة. اه اه. الشركاء ستة."}, {"start": 590.02, "end": 590.48, "speaker": "Amr_Abouesh", "text": "كتير شوية؟"}, {"start": 590.54, "end": 590.82, "speaker": "Yasmine_Khamis", "text": "كتير."}, {"start": 591.04, "end": 591.3, "speaker": "Ibrahim_Safwat", "text": "Sorry؟"}, {"start": 591.6, "end": 591.68, "speaker": "Amr_Abouesh", "text": "كتير"}, {"start": 591.74, "end": 593.64, "speaker": "Ibrahim_Safwat", "text": "اه بس هي نسب وآآآ"}, {"start": 594.94, "end": 596.52, "speaker": "Ibrahim_Safwat", "text": "بس الـ managing partners اتنين."}, {"start": 596.9, "end": 598.44, "speaker": "Abdallah_Sallam", "text": "عاجبني أوي أوي أوي إن أنتم"}, {"start": 599.5, "end": 602.2, "speaker": "Abdallah_Sallam", "text": "بتهندسوا الطلعات الجاية والسنين الجاية."}, {"start": 602.24, "end": 602.66, "speaker": "Ibrahim_Safwat", "text": "نحاول."}, {"start": 602.7, "end": 605.86, "speaker": "Abdallah_Sallam", "text": "يعني لا لا والله بتعملوها برافو عليكم. برافو عليكم برافو عليكم."}, {"start": 605.9, "end": 610.1, "speaker": "Mohamed_Farouk", "text": "وفكرتها هايلة. إن أنت بقى تعمل ده بس بتاعك أنت."}, {"start": 610.18, "end": 610.64, "speaker": "Ibrahim_Safwat", "text": "أيوة بالظبط."}, {"start": 610.82, "end": 611.68, "speaker": "Mohamed_Farouk", "text": "يعني تعمل الـ-"}, {"start": 611.7, "end": 612.36, "speaker": "Yasmine_Khamis", "text": "هاجي أشتري منك"}, {"start": 612.86, "end": 614.84, "speaker": "Yasmine_Khamis", "text": "الـ tomato jam لو الـ packaging بتاعه عامل"}, {"start": 614.88, "end": 616.02, "speaker": "Ibrahim_Safwat", "text": "بس لو كده تشتري فعلا."}, {"start": 616.24, "end": 616.52, "speaker": "Yasmine_Khamis", "text": "فاهمة؟"}, {"start": 617.96, "end": 618.8, "speaker": "Mohamed_Farouk", "text": "وتعمل الـ مخلل."}, {"start": 619.48, "end": 620.46, "speaker": "Ibrahim_Safwat", "text": "أيوة بلويف."}, {"start": 620.58, "end": 624.34, "speaker": "Mohamed_Farouk", "text": "أو بلويف بتاعك أنت. عشان دلوقتي الناس ما-- بلويف اللي في--"}, {"start": 624.92, "end": 625.92, "speaker": "Ali_ElGayar", "text": "ده بينبيعه الـ merch."}, {"start": 626.1, "end": 629.26, "speaker": "Ibrahim_Safwat", "text": "عشان بيبيعلكم هدايا الكشكول والحاجات دي. والـ box ده-"}, {"start": 629.4, "end": 633.58, "speaker": "Mohamed_Farouk", "text": "وتعمل السجق بتاعك. تعمل جبنة رومي بتاعتك. تعمل جبنة البيضة بتاعتك."}, {"start": 633.92, "end": 634.96, "speaker": "Ibrahim_Safwat", "text": "احنا في الـ plan بس قلنا-"}], "video_5_part_02": [{"start": 0.58, "end": 2.38, "speaker": "Amira_Abaza", "text": "أنا أميرة أباظة founder of Ammy's Bakery."}, {"start": 2.5, "end": 11.5, "speaker": "Soha_Abaza", "text": "وأنا سها أباظة co founder of Ammy's Bakery. قبل ما نبتدي حابين نسألكم سؤال بتفكروا في إيه لما نقول لكم cookies حاجة بتاكلوها لوحدكم ولا مع صحبكم؟"}, {"start": 13.54, "end": 14.1, "speaker": "Ayman_Abbas", "text": "الاتنين."}, {"start": 15.04, "end": 15.64, "speaker": "Amira_Abaza", "text": "مع ولادي."}, {"start": 15.92, "end": 19.38, "speaker": "Soha_Abaza", "text": "ماشي، إحنا العرض بتاعنا 2 مليون مقابل 15%."}, {"start": 19.74, "end": 20.72, "speaker": "Amira_Abaza", "text": "وإحنا عشان كده"}, {"start": 21.52, "end": 22.84, "speaker": "Amira_Abaza", "text": "عملنا الكوكي كيك الكبيرة."}, {"start": 23.34, "end": 25.68, "speaker": "Amira_Abaza", "text": "ودي إحنا أول brand ينزلها في مصر"}, {"start": 26.24, "end": 29.08, "speaker": "Amira_Abaza", "text": "وبقت أكتر منتج مبيع عندنا."}, {"start": 29.8, "end": 31.38, "speaker": "Amira_Abaza", "text": "هو اللي قدام حضراتكم بليز جربوه."}, {"start": 31.92, "end": 33.82, "speaker": "Amira_Abaza", "text": "وخلوني أحكي لكم. Ammy's got me."}, {"start": 34.28, "end": 35.28, "speaker": "Amira_Abaza", "text": "عايزاكم تتخيلوا معايا."}, {"start": 35.3, "end": 37.56, "speaker": "Mohamed_Farouk", "text": "ممكن نجرب الحتة الصغيرة دي بدل ما تبوظ دي."}, {"start": 37.86, "end": 39.1, "speaker": "Amira_Abaza", "text": "هي دي. دي نفس الكبيرة."}, {"start": 39.28, "end": 39.5, "speaker": "Mohamed_Farouk", "text": "OK."}, {"start": 42.0, "end": 44.72, "speaker": "Soha_Abaza", "text": "جربوا ال-- ال-- النوتيلا عليها كده. These are best."}, {"start": 45.16, "end": 46.04, "speaker": "Mohamed_Farouk", "text": "ده سخنة جدًا."}, {"start": 46.26, "end": 46.5, "speaker": "Amira_Abaza", "text": "أيوه."}, {"start": 48.1, "end": 48.94, "speaker": "Mohamed_Farouk", "text": "لسه طالعة من الفرن."}, {"start": 50.0, "end": 50.88, "speaker": "Amira_Abaza", "text": "خلوني أحكي لكم."}, {"start": 51.0, "end": 51.42, "speaker": "Mohamed_Farouk", "text": "أه دي سايبة."}, {"start": 51.46, "end": 52.02, "speaker": "Amira_Abaza", "text": "Ammy's got me."}, {"start": 53.72, "end": 56.02, "speaker": "Abdallah_Sallam", "text": "مش عارف مصلحتك تحكيلي واحنا بناكل ولا."}, {"start": 56.4, "end": 57.8, "speaker": "Amira_Abaza", "text": "أيوه هي دي مصلحتي بالظبط."}, {"start": 58.4, "end": 61.58, "speaker": "Amira_Abaza", "text": "عايزاكم تتخيلوا معايا طفلة عندها 12 13 سنة."}, {"start": 62.08, "end": 65.6, "speaker": "Amira_Abaza", "text": "كل ما تاكل حاجة حلوة تعجبها بتروح تحاول تعملها في البيت."}, {"start": 66.42, "end": 66.92, "speaker": "Amira_Abaza", "text": "بتروح المكتب."}, {"start": 66.94, "end": 67.62, "speaker": "Ahmed_Tarek", "text": "بقى جامدة أوي."}, {"start": 68.02, "end": 69.74, "speaker": "Amira_Abaza", "text": "بدل ما تشتري-- تشتري ألوان."}, {"start": 69.76, "end": 71.24, "speaker": "Ahmed_Tarek", "text": "مصيبة بس جامدة أوي. مصيبة أه."}, {"start": 71.4, "end": 73.86, "speaker": "Amira_Abaza", "text": "بتشتري كتب مارثا ستيوارت وكتب عن الـ baking."}, {"start": 74.4, "end": 77.32, "speaker": "Ahmed_Tarek", "text": "أنا لسه عامل investment في diet وعمال أقول diet."}, {"start": 77.64, "end": 78.68, "speaker": "Amira_Abaza", "text": "ما هو ده الـ balance."}, {"start": 80.24, "end": 84.28, "speaker": "Amira_Abaza", "text": "أخواتها بيلعبوا video games. وهي لعبتها الـ baking. الطفلة دي أنا."}, {"start": 84.74, "end": 85.84, "speaker": "Amira_Abaza", "text": "وحبي للحاجات الحلوة"}, {"start": 86.3, "end": 98.04, "speaker": "Amira_Abaza", "text": "كبر معايا لدرجة إن أنا مشروع التخرج بتاعي كان عن الحلويات. ودايمًا كنت بـ bake لأهلي وأصحابي cookies, cakes, cheesecakes أي حاجة وكل حاجة. ودايمًا كان حلمي إن أنا أعمل مشروع ليه"}, {"start": 98.08, "end": 98.86, "speaker": "Amira_Abaza", "text": "علاقة بالحلويات."}, {"start": 98.98, "end": 110.9, "speaker": "Soha_Abaza", "text": "ومن هنا فكرة Ammy's Bakery طلعت. نحول شغف أميرة لمشروع ناجح. وبما إن أكتر حاجة أميرة كانت مشهورة بيها هي الـ cookies قررنا نركز عليها. ويبقى ده المنتج الأساسي بتاعنا. قعدت سنة ونص تشتغل"}, {"start": 110.94, "end": 111.8, "speaker": "Soha_Abaza", "text": "على الـ recipe بتاعتها."}, {"start": 112.02, "end": 113.82, "speaker": "Amira_Abaza", "text": "وكنت بقعد بال 11 ساعة في المطبخ."}, {"start": 114.08, "end": 118.44, "speaker": "Soha_Abaza", "text": "وبعد batches كتيرة محروقة أو batches بايظة وصلنا للي قدام حضراتكم النهاردة."}, {"start": 118.94, "end": 129.92, "speaker": "Amira_Abaza", "text": "إحنا ابتدينا نبيع online بـ cookie buckets to share. نفس فكرة الـ fried chicken sharing buckets. وأول orders طلعناها كلها راحت بايظة ومتبهدلة. فاضطرينا نراجع الـ concept بتاعنا كله."}, {"start": 130.52, "end": 133.68, "speaker": "Amira_Abaza", "text": "وساعتها وصلنا للـ cookie كيك الكبيرة to share."}, {"start": 134.32, "end": 143.84, "speaker": "Soha_Abaza", "text": "ومن هنا كل حاجة بدأت. الـ demand علي علينا جدًا بالذات في الـ high seasons بتاعتنا. وكنت في الأول أنا وأميرة بنقعد بالساعات ناخد الـ orders بإيدينا ونحضرهم بنفسنا."}, {"start": 144.64, "end": 151.82, "speaker": "Soha_Abaza", "text": "وفي 3 سنين كانت مبيعاتنا بتزيد سنة عن سنة بمعدل 50 لـ 60%. لحد ما في 2024"}, {"start": 152.38, "end": 155.8, "speaker": "Soha_Abaza", "text": "مبيعاتنا كسرت المليون جنيه. وده وإحنا شغالين من مطبخ بيتنا"}, {"start": 156.32, "end": 159.76, "speaker": "Soha_Abaza", "text": "بـ our maximum operating capacity ومش من meet الـ demand بتاعنا."}, {"start": 160.1, "end": 168.02, "speaker": "Amira_Abaza", "text": "وده اللي شجعنا إن إحنا نفتح السنة دي أول store لينا. وفي 10 شهور قدرنا نحقق مبيعات 5 مليون جنيه بـ 30% net profit."}, {"start": 168.58, "end": 171.16, "speaker": "Amira_Abaza", "text": "وده من غير أي aggregators وماركتينج قليل جدًا."}, {"start": 171.82, "end": 173.2, "speaker": "Amira_Abaza", "text": "إحنا عايزين نـ scale Amys."}, {"start": 173.92, "end": 182.42, "speaker": "Amira_Abaza", "text": "وعشان نـ scale Amys محتاجين مساعدتكم وخبرتكم عشان نعمل الـ plans اللي عندنا. ابتداءً من catering لـ B2B deals لـ retail"}, {"start": 183.12, "end": 187.36, "speaker": "Amira_Abaza", "text": "نبيع حاجتنا في retail نتوسع في الـ offerings بتاعتنا وإحنا محافظين على الجودة بتاعتنا."}, {"start": 187.74, "end": 194.12, "speaker": "Soha_Abaza", "text": "إحنا بالنسبة لنا Amys مش بس a brand. هو الـ baby بتاعنا. وحلمنا إن هو يتوسع في مصر كلها وبرة مصر كمان."}, {"start": 194.6, "end": 196.14, "speaker": "Soha_Abaza", "text": "إحنا جاهزين لأسئلتكم يا sharks."}, {"start": 196.68, "end": 199.22, "speaker": "Mohamed_Farouk", "text": "برافو عليكم. أنا كلت البتاع كله. برافو. برافو. لا لا"}, {"start": 200.02, "end": 200.98, "speaker": "Mohamed_Farouk", "text": "هي دي فيها بتاع كام؟"}, {"start": 202.38, "end": 204.62, "speaker": "Mohamed_Farouk", "text": "بلاش حسابات. 6 آلاف 7 آلاف."}, {"start": 205.2, "end": 206.48, "speaker": "Hilda_Louca", "text": "ما بينحسوا they are on set."}, {"start": 207.4, "end": 210.02, "speaker": "Abdallah_Sallam", "text": "أنا قلت لهم قبل كده count your blessings not your calories."}, {"start": 210.04, "end": 210.78, "speaker": "Amira_Abaza", "text": "بالظبط."}, {"start": 210.84, "end": 211.32, "speaker": "Hilda_Louca", "text": "والله."}, {"start": 212.32, "end": 215.56, "speaker": "Mohamed_Farouk", "text": "أنا كلت الربع اللي كان قدامي وعبد الله كل الطبق."}, {"start": 216.36, "end": 219.46, "speaker": "Ayman_Abbas", "text": "ما شاء الله داخل عليها. لا لا طعمها ما حصلش ما حصلش."}, {"start": 219.8, "end": 220.06, "speaker": "Soha_Abaza", "text": "شكرًا."}, {"start": 220.1, "end": 220.56, "speaker": "Amira_Abaza", "text": "الحمد لله."}, {"start": 220.94, "end": 227.66, "speaker": "Ayman_Abbas", "text": "الفرع بتاعكم فين اللي موجود دلوقتي؟ وكل مبيعاتكم نصها إيه الـ-- إيه النسبة بتاعة الأون لاين وإيه النسبة بتاعة الأوف لاين؟"}, {"start": 227.86, "end": 233.36, "speaker": "Amira_Abaza", "text": "في الـ high seasons بتاعتنا الأون لاين بيبقى 50% وإحنا بنوزع across مصر كلها."}, {"start": 234.26, "end": 237.48, "speaker": "Amira_Abaza", "text": "بس في الـ seasons العادية بيبقى 90% من الفرع."}, {"start": 237.66, "end": 239.0, "speaker": "Ayman_Abbas", "text": "يعني بكام كيك دي مثلًا؟"}, {"start": 239.46, "end": 241.7, "speaker": "Amira_Abaza", "text": "الكيك اللي قدام حضرتك دي بـ 750."}, {"start": 242.02, "end": 242.62, "speaker": "Ayman_Abbas", "text": "بالتشوكليت؟"}, {"start": 243.06, "end": 243.7, "speaker": "Amira_Abaza", "text": "بالتشوكليت."}, {"start": 244.82, "end": 246.02, "speaker": "Ayman_Abbas", "text": "بالتشوكليت اللي فيها بـ 750؟"}, {"start": 246.32, "end": 246.92, "speaker": "Amira_Abaza", "text": "جوة وبرة."}, {"start": 247.38, "end": 249.2, "speaker": "Soha_Abaza", "text": "هي دي محشية وعليها كمان كندر."}, {"start": 249.36, "end": 249.66, "speaker": "Ayman_Abbas", "text": "OK."}, {"start": 250.18, "end": 252.96, "speaker": "Abdallah_Sallam", "text": "هايل. دي كندر التشوكلت دي. والـ margins إيه بتاعتكم؟"}, {"start": 253.74, "end": 256.58, "speaker": "Amira_Abaza", "text": "الـ margin بتاعنا إحنا الـ net profit بتاعنا 30%"}, {"start": 257.1, "end": 259.16, "speaker": "Amira_Abaza", "text": "الـ gross profit بتاعنا 65%."}, {"start": 259.48, "end": 259.62, "speaker": "Ayman_Abbas", "text": "OK."}, {"start": 259.74, "end": 262.62, "speaker": "Amira_Abaza", "text": "والـ cost of goods sold بتاعنا 35. 35%."}, {"start": 262.94, "end": 263.24, "speaker": "Ayman_Abbas", "text": "هايل."}, {"start": 264.28, "end": 265.8, "speaker": "Ayman_Abbas", "text": "Amazing product. بجد"}, {"start": 266.76, "end": 270.76, "speaker": "Mohamed_Farouk", "text": "هايل. أنا يعني كان في brand كده بتاع cookies"}, {"start": 271.28, "end": 280.6, "speaker": "Mohamed_Farouk", "text": "كان طلع من إنجلترا وكبر أوي وشفتهم قد إيه الـ-- الناس النهاردة so trendy خصوصًا الـ cookies اللي هي الأكبر من كده شوية الأضخم دي."}, {"start": 281.22, "end": 282.34, "speaker": "Abdallah_Sallam", "text": "Benz. Benz."}, {"start": 282.7, "end": 284.26, "speaker": "Soha_Abaza", "text": "اه. Those are our favorite."}, {"start": 284.42, "end": 290.64, "speaker": "Mohamed_Farouk", "text": "اه اه. فـ I believe ما أعرفش عندكم الـ fruit cookies كمان ولا لا. اللي هم بيعملوا apple وحاجات كده."}, {"start": 291.16, "end": 302.88, "speaker": "Amira_Abaza", "text": "ده في الـ plan بتاعتنا. إحنا دلوقتي we're very focused على إن إحنا نعمل one product فيه منه variations كتير. ما دخلناش أي flavors اللي هي beyond الشوكولاتة. عشان إحنا بنحاول إن إحنا نعمل research أوي"}, {"start": 303.2, "end": 305.42, "speaker": "Amira_Abaza", "text": "يخلينا أي حاجة ننزلها يتقال عليها wow."}, {"start": 305.46, "end": 308.5, "speaker": "Ahmed_Tarek", "text": "عاجبني الـ approach بتاعكم. أنتم بتصنعوا فين دلوقتي؟"}, {"start": 309.16, "end": 314.5, "speaker": "Amira_Abaza", "text": "عندنا central kitchen صغير وده بيتعمل فيه بس الـ main dough. وكل حاجة تانية بتتعمل جوة الـ store."}, {"start": 314.72, "end": 315.92, "speaker": "Ahmed_Tarek", "text": "وأنتم هتاخدوا المبلغ"}, {"start": 316.78, "end": 317.34, "speaker": "Ahmed_Tarek", "text": "تعمله بإيه؟"}, {"start": 317.86, "end": 320.34, "speaker": "Amira_Abaza", "text": "إحنا محتاجين الـ 2 مليون دول عشان"}, {"start": 320.96, "end": 332.92, "speaker": "Amira_Abaza", "text": "نكبر الـ operating capacity بتاعتنا. فإحنا basically عايزين نصرف على المطبخ بتاعنا. لأن إحنا دلوقتي بن-- يعني we're very limited. يا دوبك بنكفي الـ store بتاعنا. إحنا عشان نقدر نتوسع عندنا plans كتيرة"}, {"start": 332.96, "end": 333.18, "speaker": "Amira_Abaza", "text": "أوي"}, {"start": 333.82, "end": 337.12, "speaker": "Amira_Abaza", "text": "زي ما قلت منها catering لـ B2B deals لـ retail."}, {"start": 337.88, "end": 338.26, "speaker": "Amira_Abaza", "text": "كل ده"}, {"start": 338.8, "end": 340.62, "speaker": "Amira_Abaza", "text": "مش هنعرف نـ meet الـ demand. إحنا بيجيلنا"}, {"start": 341.24, "end": 344.44, "speaker": "Amira_Abaza", "text": "requests كتير أوي على catering وعلى deals"}, {"start": 344.98, "end": 348.54, "speaker": "Amira_Abaza", "text": "ما بنقدرش-- يعني بناخد اللي نقدر عليه. بس we are at maximum operating capacity."}, {"start": 348.54, "end": 350.04, "speaker": "Soha_Abaza", "text": "عندنا limitation في الموضوع."}, {"start": 350.04, "end": 350.96, "speaker": "Amira_Abaza", "text": "بالظبط. عشان برضو"}, {"start": 351.7, "end": 357.38, "speaker": "Amira_Abaza", "text": "ممكن ناخد أي حاجة بس ساعتها الـ quality مش هتكون نفس الحاجة. مين بيشتغل غيركم هلأ بهالموضوع؟"}, {"start": 358.16, "end": 359.0, "speaker": "Amira_Abaza", "text": "إحنا عندنا team"}, {"start": 359.64, "end": 365.38, "speaker": "Amira_Abaza", "text": "ده اللي بيـ operate كل حاجة واحنا بنـ manage and oversee everything. كم واحد في الـ team؟ إحنا overall كلنا عشرة."}, {"start": 367.52, "end": 368.56, "speaker": "Mohamed_Farouk", "text": "بالبيكرز بكله"}, {"start": 369.14, "end": 369.46, "speaker": "Mohamed_Farouk", "text": "برافو."}, {"start": 369.92, "end": 371.04, "speaker": "Abdallah_Sallam", "text": "I love your packaging كمان."}, {"start": 373.28, "end": 375.3, "speaker": "Abdallah_Sallam", "text": "هو بيتباع في الpackages شبه دي ولا انتم هنا."}, {"start": 375.5, "end": 377.44, "speaker": "Soha_Abaza", "text": "لا لا لا هو ده الpackages."}, {"start": 377.68, "end": 379.34, "speaker": "Abdallah_Sallam", "text": "أنا بستغرب جدا يعني انتم"}, {"start": 380.48, "end": 383.42, "speaker": "Abdallah_Sallam", "text": "كل شوية بحس إن سوق الكوكيز دوت أكبر مما كلنا متخيلينه."}, {"start": 383.86, "end": 383.98, "speaker": "Soha_Abaza", "text": "صح."}, {"start": 384.1, "end": 387.54, "speaker": "Abdallah_Sallam", "text": "يعني دايما لما موضوع كوكيز ده بدأ ينتشر. طبعا الكوكيز اللي هي basically"}, {"start": 388.06, "end": 389.94, "speaker": "Abdallah_Sallam", "text": "زمان ممكن تسميها كانت البسكوت بس."}, {"start": 391.6, "end": 399.98, "speaker": "Abdallah_Sallam", "text": "بس apparently الموضوع كبير لأن كمية concepts الكوكيز اللي بتطلع وكل واحد ساعات بيشوفها يحس إن خلاص يا جماعة بقى كفاية كوكيز بس كله بيشتغل وبيكبر."}, {"start": 400.56, "end": 405.08, "speaker": "Abdallah_Sallam", "text": "وconcept إن يبقى عندك standalone bakery ما بيعملش حاجة غير كوكيز زي بنز والحاجات دي كلها."}, {"start": 405.54, "end": 409.92, "speaker": "Abdallah_Sallam", "text": "أنا لغاية النهاردة بتخضني يعني بس apparently السوق كبير جدا."}, {"start": 409.96, "end": 420.0, "speaker": "Soha_Abaza", "text": "ممكن أقول حاجة كمان برضو to prove إن الناس فعلا بتحب الbrand احنا الretention rate بتاعنا 35 في المية فاحنا returning customers they keep on coming back لأنه فعلا إحنا"}, {"start": 421.04, "end": 425.2, "speaker": "Soha_Abaza", "text": "يعني هي مش بس dessert هي حاجة beyond الكوكيز وbeyond."}, {"start": 425.54, "end": 429.8, "speaker": "Abdallah_Sallam", "text": "السيزن إمتى أنتم عمالين قولتوها كذا مرة في السيزن ديت السيزن ده اللي هو Christmas."}, {"start": 431.14, "end": 435.92, "speaker": "Soha_Abaza", "text": "والـChristmas عشان mainly الكيكس بتاعتنا دي الbest seller بتاعتنا الfilling نوتيلا top and kinder"}, {"start": 436.76, "end": 438.18, "speaker": "Soha_Abaza", "text": "دي mainly بتتباع أكتر حاجة"}, {"start": 438.82, "end": 440.6, "speaker": "Soha_Abaza", "text": "في رمضان في Christmas في"}, {"start": 441.14, "end": 442.32, "speaker": "Soha_Abaza", "text": "الـvalentines."}, {"start": 442.66, "end": 443.1, "speaker": "Amira_Abaza", "text": "أي عيد."}, {"start": 443.82, "end": 447.7, "speaker": "Soha_Abaza", "text": "بالظبط عشان احنا كمان بنعمل customization. فمثلا في mothers day أو مثلا"}, {"start": 448.4, "end": 449.32, "speaker": "Soha_Abaza", "text": "وقت الgraduation"}, {"start": 449.78, "end": 451.02, "speaker": "Soha_Abaza", "text": "أي حاجة فيها event"}, {"start": 451.86, "end": 452.74, "speaker": "Soha_Abaza", "text": "بنـ customize."}, {"start": 453.46, "end": 454.98, "speaker": "Mohamed_Farouk", "text": "السنة الجاية عايزين تبيعوا بكام؟"}, {"start": 455.58, "end": 460.06, "speaker": "Soha_Abaza", "text": "السنة الجاية إن شاء الله عايزين نبيع ب25 في المية أكتر ف6.5."}, {"start": 460.9, "end": 461.9, "speaker": "Mohamed_Farouk", "text": "جمّدوا قلبكم شوية."}, {"start": 462.58, "end": 464.24, "speaker": "Hilda_Louca", "text": "That's assuming إن احنا."}, {"start": 464.3, "end": 465.36, "speaker": "Soha_Abaza", "text": "Very conservative."}, {"start": 465.42, "end": 474.76, "speaker": "Mohamed_Farouk", "text": "لا يعني I think في السن اللي أنتم فيه ده كشركة I think you need to double every year عشان تحسوا إن أنتم ماشيين on the right track. يعني حطوا لنفسكم كده mostly."}, {"start": 474.8, "end": 476.32, "speaker": "Amira_Abaza", "text": "ما دي بقى بمساعدة مساعدتكم."}, {"start": 476.42, "end": 476.76, "speaker": "Soha_Abaza", "text": "بالظبط."}, {"start": 476.84, "end": 477.92, "speaker": "Amira_Abaza", "text": "هتقولوا لنا هنعملها إزاي؟"}, {"start": 478.2, "end": 479.32, "speaker": "Ayman_Abbas", "text": "أنتم الbackground بتاعكم إيه؟"}, {"start": 480.42, "end": 480.86, "speaker": "Amira_Abaza", "text": "Marketing."}, {"start": 481.08, "end": 482.84, "speaker": "Soha_Abaza", "text": "one finance وone economics."}, {"start": 483.28, "end": 484.56, "speaker": "Ayman_Abbas", "text": "هي انتي ماسكة الحسابات في الشركة"}, {"start": 485.16, "end": 486.34, "speaker": "Ayman_Abbas", "text": "وهي ماسكة الmarketing."}, {"start": 486.58, "end": 487.74, "speaker": "Amira_Abaza", "text": "Marketing operations."}, {"start": 488.14, "end": 491.0, "speaker": "Soha_Abaza", "text": "وbranding أي حاجة fun أنا أي حاجة أرقام هي."}, {"start": 492.26, "end": 494.06, "speaker": "Abdallah_Sallam", "text": "رامية على أختها مين اللي أكبر من الـتانية."}, {"start": 494.3, "end": 495.56, "speaker": "Soha_Abaza", "text": "مع حضرتك حضرتك"}, {"start": 496.44, "end": 497.38, "speaker": "Soha_Abaza", "text": "شايف مين فينا أكبر؟"}, {"start": 498.14, "end": 499.64, "speaker": "Soha_Abaza", "text": "دي دايما خناقة ما بيني وما بينها."}, {"start": 500.0, "end": 500.74, "speaker": "Ayman_Abbas", "text": "أنت أكبر."}, {"start": 501.5, "end": 502.0, "speaker": "Amira_Abaza", "text": "صح صح."}, {"start": 502.06, "end": 503.2, "speaker": "Soha_Abaza", "text": "بس أنا أكبر بس أنا."}, {"start": 503.24, "end": 507.52, "speaker": "Ayman_Abbas", "text": "اوكي very close يعني. أنتوا مسمية الbrand بتاعك أنت الأول مسمياه على أميرة."}, {"start": 507.58, "end": 508.1, "speaker": "Soha_Abaza", "text": "على أميرة."}, {"start": 508.14, "end": 509.14, "speaker": "Amira_Abaza", "text": "بس الs دي لسهى"}, {"start": 509.7, "end": 510.78, "speaker": "Amira_Abaza", "text": "هي سهى اللي جاية."}, {"start": 514.0, "end": 517.24, "speaker": "Soha_Abaza", "text": "لا بس هو على اسمها عشان هي اللي she created the recipe it's her passion."}, {"start": 517.5, "end": 517.98, "speaker": "Ayman_Abbas", "text": "وفل تايم."}, {"start": 518.7, "end": 520.94, "speaker": "Amira_Abaza", "text": "احنا this is in the process of being full time."}, {"start": 521.24, "end": 522.34, "speaker": "Ayman_Abbas", "text": "أنتم دلوقتي مش فل تايم."}, {"start": 522.54, "end": 522.72, "speaker": "Amira_Abaza", "text": "لا."}, {"start": 523.2, "end": 524.08, "speaker": "Ayman_Abbas", "text": "فعندكم شغلانة."}, {"start": 524.74, "end": 528.0, "speaker": "Amira_Abaza", "text": "9 to 5 بس very flexible job بس احنا in the process of"}, {"start": 528.48, "end": 529.64, "speaker": "Amira_Abaza", "text": "being full time."}, {"start": 530.26, "end": 531.92, "speaker": "Ayman_Abbas", "text": "ومين اللي بيمثلكم بقى دلوقتي في الـ."}, {"start": 532.62, "end": 534.22, "speaker": "Amira_Abaza", "text": "عندنا عندنا a whole team."}, {"start": 534.28, "end": 534.98, "speaker": "Ayman_Abbas", "text": "مين المدير؟"}, {"start": 535.98, "end": 540.02, "speaker": "Amira_Abaza", "text": "We have a manager in place ده اللي بيـ handle كل حاجة واحنا بنـ oversee."}, {"start": 540.84, "end": 541.0, "speaker": "Ayman_Abbas", "text": "أوك"}, {"start": 541.46, "end": 543.54, "speaker": "Ayman_Abbas", "text": "ازاي ازاي appointed المدير ده؟"}, {"start": 544.22, "end": 546.08, "speaker": "Amira_Abaza", "text": "بصراحة دي أكتر حاجة صعبة"}, {"start": 546.66, "end": 547.96, "speaker": "Amira_Abaza", "text": "بنعملها وit's still ongoing."}, {"start": 548.1, "end": 548.4, "speaker": "Mohamed_Farouk", "text": "برافو عليكم."}, {"start": 548.42, "end": 548.8, "speaker": "Amira_Abaza", "text": "بس أنا"}, {"start": 549.36, "end": 552.16, "speaker": "Amira_Abaza", "text": "كـ operations managing the thing I'm always there"}, {"start": 553.02, "end": 555.4, "speaker": "Amira_Abaza", "text": "وبـ oversee بس هما بيتغيروا كتير أنا."}, {"start": 555.5, "end": 558.0, "speaker": "Mohamed_Farouk", "text": "بس أنت قلت حاجة كويسة it's an ongoing process."}, {"start": 558.08, "end": 558.96, "speaker": "Amira_Abaza", "text": "ongoing بصراحة."}, {"start": 559.02, "end": 560.0, "speaker": "Mohamed_Farouk", "text": "لغاية ما هتلاقي."}, {"start": 560.06, "end": 560.24, "speaker": "Amira_Abaza", "text": "صح."}, {"start": 560.32, "end": 564.64, "speaker": "Mohamed_Farouk", "text": "يعني تفضلي تدوري وتجربي. أهم حاجة ما تتأخريش في القرار."}, {"start": 565.52, "end": 567.52, "speaker": "Mohamed_Farouk", "text": "لما تلاقي تحسي إن في حاجة that is wrong."}, {"start": 567.72, "end": 568.58, "speaker": "Amira_Abaza", "text": "لا definitely اه اه."}, {"start": 568.62, "end": 570.6, "speaker": "Mohamed_Farouk", "text": "Take the decision على طول."}, {"start": 571.4, "end": 572.9, "speaker": "Mohamed_Farouk", "text": "وخدي قرار إن أنتِ تجربي."}, {"start": 573.4, "end": 575.7, "speaker": "Mohamed_Farouk", "text": "it's an ongoing process. وهي موجودة في كل"}, {"start": 577.02, "end": 579.86, "speaker": "Mohamed_Farouk", "text": "في الدنيا يعني. طيب عندكم social media presence ولا لا؟"}, {"start": 580.16, "end": 580.46, "speaker": "Amira_Abaza", "text": "Yes."}, {"start": 580.52, "end": 580.8, "speaker": "Mohamed_Farouk", "text": "مين؟"}, {"start": 581.44, "end": 581.64, "speaker": "Amira_Abaza", "text": "أنا."}, {"start": 581.92, "end": 582.46, "speaker": "Mohamed_Farouk", "text": "عندك كام بقى؟"}, {"start": 583.06, "end": 584.04, "speaker": "Amira_Abaza", "text": "لا لا احنا عندنا"}, {"start": 584.82, "end": 590.84, "speaker": "Amira_Abaza", "text": "عندنا platform both our Instagram وTikTok احنا we're very active عليه. We بين our relationship واحنا."}, {"start": 591.06, "end": 592.56, "speaker": "Mohamed_Farouk", "text": "لا لا مش مشكلة يعني كام."}, {"start": 592.68, "end": 593.5, "speaker": "Amira_Abaza", "text": "كام followers يعني."}, {"start": 593.54, "end": 594.0, "speaker": "Mohamed_Farouk", "text": "كام follower."}, {"start": 594.1, "end": 595.4, "speaker": "Amira_Abaza", "text": "عندنا على على"}, {"start": 595.94, "end": 596.68, "speaker": "Amira_Abaza", "text": "Instagram عندنا"}, {"start": 597.38, "end": 598.5, "speaker": "Amira_Abaza", "text": "حوالي 50 ألف"}, {"start": 599.04, "end": 603.2, "speaker": "Amira_Abaza", "text": "وTikTok عندنا ما بنبصش على الfollowers أوي عندنا 10 آلاف بس بنبص على الviews."}, {"start": 603.24, "end": 607.18, "speaker": "Ahmed_Tarek", "text": "أنت عارف إن موضوع الfollower ده بقى بتبقى حاجة ممكن الناس تشتريها ويعني."}, {"start": 607.24, "end": 609.44, "speaker": "Amira_Abaza", "text": "صح. أهم حاجة الviews. بنركز على الviews."}, {"start": 609.5, "end": 610.86, "speaker": "Abdallah_Sallam", "text": "بنركز على الviews طبعا والـ engagement."}, {"start": 612.86, "end": 614.74, "speaker": "Abdallah_Sallam", "text": "الbest seller بتاعتكم إيه؟ chocolate chip ولا إيه؟"}, {"start": 614.98, "end": 615.82, "speaker": "Amira_Abaza", "text": "نوتيلا عليها كام دي."}, {"start": 616.42, "end": 617.24, "speaker": "Soha_Abaza", "text": "اللي حضرتك دوقتها."}, {"start": 617.44, "end": 619.14, "speaker": "Abdallah_Sallam", "text": "اللي هي اللي هي في منها الversion بتاعتنا."}, {"start": 619.2, "end": 619.54, "speaker": "Amira_Abaza", "text": "اه بالظبط."}, {"start": 619.56, "end": 619.86, "speaker": "Abdallah_Sallam", "text": "مشكلة."}, {"start": 620.52, "end": 627.84, "speaker": "Ahmed_Tarek", "text": "بس أنتم عارفين احنا كلنا لازم نتكلم مع عبدالله بالليل ونأكل سكر كمان. عشان هو ياخد دي يتعشى بكده. أنا"}, {"start": 628.88, "end": 630.2, "speaker": "Mohamed_Farouk", "text": "هاخد منه بساعة قبل ما يروح."}, {"start": 630.48, "end": 631.04, "speaker": "Amira_Abaza", "text": "هيروح بيه."}, {"start": 631.1, "end": 634.36, "speaker": "Mohamed_Farouk", "text": "عملت بيه خدمة. عشان دي في مسافة السكة هتكون خلصت."}, {"start": 634.64, "end": 635.58, "speaker": "Amira_Abaza", "text": "احنا هنسخنها."}, {"start": 635.72, "end": 638.48, "speaker": "Ahmed_Tarek", "text": "أنا هديكوا offer اللي أنتم طالبينه مقابل"}, {"start": 639.14, "end": 640.24, "speaker": "Ahmed_Tarek", "text": "25 في المية"}, {"start": 640.78, "end": 643.96, "speaker": "Ahmed_Tarek", "text": "وأنا عندي kitchen ممكن تيجوا تستعملوه"}, {"start": 644.86, "end": 646.1, "speaker": "Ahmed_Tarek", "text": "هو في مصر الجديدة."}, {"start": 646.94, "end": 649.24, "speaker": "Hilda_Louca", "text": "أنا مح أعرف أساعدكم هون بمصر."}, {"start": 649.3, "end": 650.58, "speaker": "Soha_Abaza", "text": "بس ممكن تساعدينا برة."}, {"start": 651.1, "end": 652.66, "speaker": "Hilda_Louca", "text": "أكيد فيني أساعدكم برة"}, {"start": 653.14, "end": 655.26, "speaker": "Hilda_Louca", "text": "بس شكلكم هون أساعدكم بأول الطريق."}, {"start": 655.32, "end": 655.68, "speaker": "Hilda_Louca", "text": "صح."}, {"start": 656.06, "end": 659.0, "speaker": "Hilda_Louca", "text": "فحخلي sharks تانيين يعطوكم كمان offers."}, {"start": 662.92, "end": 663.28, "speaker": "Ayman_Abbas", "text": "عبدالله."}, {"start": 663.66, "end": 664.6, "speaker": "Soha_Abaza", "text": "ندوق الأول بعدين."}, {"start": 665.04, "end": 668.08, "speaker": "Mohamed_Farouk", "text": "دوق والله حلوة أوي. بتعملوا customization ده لأسامي؟"}, {"start": 668.5, "end": 668.7, "speaker": "Amira_Abaza", "text": "Yes."}, {"start": 668.88, "end": 669.32, "speaker": "Mohamed_Farouk", "text": "ولا دي."}, {"start": 669.92, "end": 676.8, "speaker": "Amira_Abaza", "text": "لا لا بنعملها أصلًا on spot. يعني لو حد راح المحل وقال أنا عايز دلوقتي أعمل customization بنعملها on spot."}, {"start": 677.04, "end": 679.24, "speaker": "Mohamed_Farouk", "text": "بتمشي تمشي birthday cakes وكده."}, {"start": 679.3, "end": 679.8, "speaker": "Amira_Abaza", "text": "اه بالظبط."}, {"start": 679.84, "end": 680.0, "speaker": "Soha_Abaza", "text": "كل"}, {"start": 680.52, "end": 681.12, "speaker": "Soha_Abaza", "text": "كل المناسبات."}, {"start": 681.18, "end": 683.74, "speaker": "Amira_Abaza", "text": "ما ده أصلًا part من هدفنا إن احنا"}, {"start": 684.36, "end": 689.46, "speaker": "Amira_Abaza", "text": "نبقى موجودين في كل الevents بتاعة يعني أي gathering. اه بالظبط."}, {"start": 689.64, "end": 692.38, "speaker": "Abdallah_Sallam", "text": "هايل وأنتم persistent على cookies فقط."}, {"start": 692.64, "end": 692.7, "speaker": "Amira_Abaza", "text": "لا"}, {"start": 693.3, "end": 694.04, "speaker": "Amira_Abaza", "text": "actually احنا."}, {"start": 694.38, "end": 694.88, "speaker": "Mohamed_Farouk", "text": "نخش في حاجات تانية."}, {"start": 694.92, "end": 701.38, "speaker": "Amira_Abaza", "text": "ابتدأنا بالcookies عشان نركز عشان أقدر أكون الناس تثق فيا وتقول أنا أي حاجة هنزلها بعد كده تبقى حاجة حلوة."}, {"start": 701.96, "end": 702.16, "speaker": "Amira_Abaza", "text": "بس"}, {"start": 702.82, "end": 708.74, "speaker": "Amira_Abaza", "text": "مستقبليا احنا اسمنا Amy's Bakery مش Amy's Cookies عشان احنا مش شايفين إن احنا limited لـone thing بس احنا بالعكس عايزين نتوسع"}, {"start": 709.32, "end": 709.72, "speaker": "Amira_Abaza", "text": "في المستقبل."}, {"start": 709.8, "end": 715.16, "speaker": "Soha_Abaza", "text": "وأكتر حاجة احنا بجد عايزين نركز عليها نبقى consistent والجودة بتاعتنا تبقى دايما"}, {"start": 716.42, "end": 717.18, "speaker": "Soha_Abaza", "text": "مركزين عليها."}, {"start": 717.24, "end": 718.0, "speaker": "Amira_Abaza", "text": "It's excellent."}, {"start": 718.14, "end": 723.36, "speaker": "Abdallah_Sallam", "text": "طيب أنا أنا it's one of those times اللي هقولكم أنا هفيدكم كزبون أكتر مني كـinvestor."}, {"start": 724.32, "end": 725.64, "speaker": "Abdallah_Sallam", "text": "I love what you're doing. بس"}, {"start": 726.5, "end": 727.48, "speaker": "Abdallah_Sallam", "text": "unfortunately I'm out."}, {"start": 729.08, "end": 729.48, "speaker": "Amira_Abaza", "text": "أوك."}, {"start": 729.52, "end": 732.22, "speaker": "Ayman_Abbas", "text": "أنا هديكوا offer اللي أنتم طالبينه ل30 في المية."}, {"start": 732.74, "end": 734.94, "speaker": "Ayman_Abbas", "text": "هديكوا central kitchens في إسكندرية في القاهرة."}, {"start": 735.56, "end": 736.5, "speaker": "Ayman_Abbas", "text": "احنا عندنا brand"}, {"start": 736.96, "end": 739.08, "speaker": "Ayman_Abbas", "text": "عندنا two brands actually اتنين brands"}, {"start": 739.58, "end": 740.62, "speaker": "Ayman_Abbas", "text": "واحد منهم قديم بقى له"}, {"start": 741.64, "end": 742.46, "speaker": "Ayman_Abbas", "text": "120 سنة"}, {"start": 743.7, "end": 745.38, "speaker": "Ayman_Abbas", "text": "وبنحاول نرجعه تاني للحياة."}, {"start": 746.3, "end": 750.44, "speaker": "Ayman_Abbas", "text": "وأنا هعرف أفيدكم في إسكندرية في القاهرة في الـcentral kitchen."}, {"start": 752.44, "end": 754.38, "speaker": "Ayman_Abbas", "text": "أنا الoffer بتاعي 30 في المية which is"}, {"start": 754.88, "end": 757.14, "speaker": "Ayman_Abbas", "text": "أقل من محمد فاروق. محمد فاروق الoffer بتاعه أحسن."}, {"start": 758.1, "end": 760.3, "speaker": "Amira_Abaza", "text": "أنا هديكوا نفس الoffer بتاع أحمد."}, {"start": 761.2, "end": 761.34, "speaker": "Soha_Abaza", "text": "في المية."}, {"start": 761.42, "end": 764.44, "speaker": "Amira_Abaza", "text": "وبرضو with a promise إن أنا ألـ ألـ ألtry"}, {"start": 764.98, "end": 765.0, "speaker": "Amira_Abaza", "text": "في"}, {"start": 766.28, "end": 770.06, "speaker": "Amira_Abaza", "text": "يعني إن احنا السنة الجاية على الأقل to double الأرقام دي إن شاء الله"}, {"start": 770.76, "end": 777.76, "speaker": "Amira_Abaza", "text": "عن طريق بقى نشوف distribution channels عن طريق الشغل اللي هنشتغله مع بعض عن طريق الفرع الجديد عن طريق نشوف"}, {"start": 778.98, "end": 781.68, "speaker": "Amira_Abaza", "text": "kiosks صغيرة تبقى موجودة في أماكن مختلفة."}, {"start": 782.22, "end": 782.46, "speaker": "Soha_Abaza", "text": "أوك."}, {"start": 783.02, "end": 783.82, "speaker": "Soha_Abaza", "text": "طب do you mind."}, {"start": 784.32, "end": 784.84, "speaker": "Mohamed_Farouk", "text": "اه طبعا."}, {"start": 785.12, "end": 785.7, "speaker": "Soha_Abaza", "text": "ثانية واحدة."}, {"start": 813.6, "end": 814.76, "speaker": "Mohamed_Farouk", "text": "اتفضل."}, {"start": 814.8, "end": 816.0, "speaker": "Soha_Abaza", "text": "الoffer بتاع حضرتك"}, {"start": 816.96, "end": 822.88, "speaker": "Soha_Abaza", "text": "ينفع نعمل counter offer يبقى 20 في المية مقابل خمست- 20 في المية مقابل 2 مليون."}, {"start": 824.1, "end": 825.56, "speaker": "Ayman_Abbas", "text": "ينفع يا محمد تنزل المرة دي."}, {"start": 827.86, "end": 832.36, "speaker": "Amira_Abaza", "text": "أنا هأقبل 20 المية بس هزود اتنين المية royalty for five years."}, {"start": 834.02, "end": 834.66, "speaker": "Ayman_Abbas", "text": "مش وحش برضو."}, {"start": 835.2, "end": 835.54, "speaker": "Soha_Abaza", "text": "ماشي."}, {"start": 836.18, "end": 836.86, "speaker": "Amira_Abaza", "text": "مبروك."}], "video_17_part_01": [{"start": 0.7, "end": 1.44, "speaker": "Mohamed_Khayal", "text": "حلوس wax."}, {"start": 2.48, "end": 4.06, "speaker": "Mohamed_Khayal", "text": "أنا محمد زهران founder خيال."}, {"start": 4.22, "end": 5.9, "speaker": "Nadine_Khayal", "text": "وأنا نادين سامي partner في خيال."}, {"start": 7.38, "end": 7.88, "speaker": "Mohamed_Khayal", "text": "وده جبل."}, {"start": 9.74, "end": 18.06, "speaker": "Nadine_Khayal", "text": "تعالوا أقول لكم عن حب وشغف اتحول لـ business قدرنا نعمل منه تلاتين مليون في تلات سنين. احنا الـ ask بتاعنا خمسة مليون مقابل اتنين وعشرين ونص في المية."}, {"start": 18.67, "end": 21.85, "speaker": "Mohamed_Khayal", "text": "وأنا عندي خمس سنين كنت بركب فروسية في نادي الجزيرة."}, {"start": 22.57, "end": 29.49, "speaker": "Mohamed_Khayal", "text": "جيت بعد كده حبيت أركب ركوب حر. لقيت الكابتن بتاعي دايما كل شوية يقول لي ما تعملش كده تاني. ده خطر الناس هناك مش أحسن حاجة."}, {"start": 30.09, "end": 33.53, "speaker": "Mohamed_Khayal", "text": "مع الوقت لقيت إن فيه مشاكل كبيرة في الركوب الحر زي عدم الأمان"}, {"start": 34.19, "end": 34.93, "speaker": "Mohamed_Khayal", "text": "وعدم التنظيم."}, {"start": 35.39, "end": 40.39, "speaker": "Mohamed_Khayal", "text": "والمشكلة الأكبر كمان إن لو حد أول مرة يروح يركب خيل بيلاقي نفسه تايه وممكن الشغف بتاعه يروح،"}, {"start": 40.91, "end": 42.33, "speaker": "Mohamed_Khayal", "text": "فقررت أحل المشكلة دي."}, {"start": 42.95, "end": 46.75, "speaker": "Mohamed_Khayal", "text": "ومن هنا بدأت أعمل خيال إن احنا mix and match ما بين الفروسية والركوب الحر"}, {"start": 47.31, "end": 48.29, "speaker": "Mohamed_Khayal", "text": "ب style professional."}, {"start": 49.01, "end": 52.17, "speaker": "Mohamed_Khayal", "text": "ودلوقتي احنا جايين نعرض عليكم المشكلة كلها وحلها."}, {"start": 52.33, "end": 64.31, "speaker": "Nadine_Khayal", "text": "وفعلا بدأنا نحل المشكلة دي في 2020 بدأنا في سقارة نعمل طلعات صغيرة ومنظمة نقول فيها للناس instructions ازاي تركب خيل ازاي تتعامل مع الحصان. فده خلى experience مختلفة جدا"}, {"start": 64.41, "end": 76.37, "speaker": "Nadine_Khayal", "text": "للركوب الحر خلى الناس مستمتعة وهي بتركب. وخلال أربع سنين قدرنا نمرن أكتر من 7000 شخص. وركب معانا أكتر من 80 ألف clients. ال clients بتوعنا سنهم من 5 سنين ل 50"}, {"start": 76.43, "end": 82.99, "speaker": "Nadine_Khayal", "text": "سنة. كمان قدرنا نساعد البنات وذوي الهمم إن هما يركبوا معانا عشان وفرنا لهم بيئة آمنة يركبوا فيها وهما مطمئنين."}, {"start": 83.47, "end": 88.19, "speaker": "Mohamed_Khayal", "text": "خيال بدأت بفكرة من غير ولا حصان. كنا بنشتغل مع اسطبلات في سقارة بالتحديد"}, {"start": 89.07, "end": 90.65, "speaker": "Mohamed_Khayal", "text": "بالنسبة percentage only."}, {"start": 91.13, "end": 102.71, "speaker": "Mohamed_Khayal", "text": "والناس بدأت تستنانا كل weekend تيجي تركب عندنا خيل مش بس عشان تركب عشان كمان تتعلم عشان احنا mix ما بين الفروسية والركوب الحر. في أول سنة فتحنا مكان قريب من الناس اللي كانت بتشتكي من بعد المسافة."}, {"start": 103.17, "end": 115.15, "speaker": "Mohamed_Khayal", "text": "قالوا لنا احنا في القاهرة الجديدة احنا ساكنين في مدينتي. ال clientele بتاعنا كان دايما اللي بيحب يركب خيل بعيد فقررنا نقرب له خدنا أو أجرنا مكان في طريق السويس إن احنا نبدأ نعلم الناس ب style"}, {"start": 115.21, "end": 116.59, "speaker": "Mohamed_Khayal", "text": "فروسية 8 sessions"}, {"start": 117.23, "end": 119.63, "speaker": "Mohamed_Khayal", "text": "dedicated جدا إنك ازاي تستمتع بالحصان."}, {"start": 120.17, "end": 131.47, "speaker": "Nadine_Khayal", "text": "وأنا كنت أول واحدة أتمرن في المكان ده. بدأت من أربع سنين مع خيال خدت experience بتاعة خيال كلها واتعلمت كل حاجة عن الخيل. بدأت as a trainee وبقيت coach. ودلوقتي زي ما أنتم شايفين أنا partner في خيال."}, {"start": 131.89, "end": 138.41, "speaker": "Nadine_Khayal", "text": "وقررت إن أنا أنقل ال experience بتاعتي لناس تانية كتير. طبعا توسعنا في أماكن كتير في مصر زي الساحل وراس سدر وسيوة."}, {"start": 138.65, "end": 142.99, "speaker": "Mohamed_Khayal", "text": "من خلال التوسع ده في 2023 حققنا 10 مليون جنيه revenue."}, {"start": 143.47, "end": 143.89, "speaker": "Mohamed_Khayal", "text": "في 24"}, {"start": 144.37, "end": 150.59, "speaker": "Mohamed_Khayal", "text": "عملنا 14 مليون جنيه. وبعد كده لقينا إن فيه challenge تانية. الأدوات الفروسية مختصرة بس على أماكن"}, {"start": 151.19, "end": 159.81, "speaker": "Mohamed_Khayal", "text": "معينة في موديلات معينة. الحاجات كلها مستوردة. احنا مش عارفين نجيب حاجتنا. ال trainees عندي بيتنقلوا في خطوة تانية إن هما عايزين يمتلكوا حصان."}, {"start": 160.39, "end": 164.27, "speaker": "Mohamed_Khayal", "text": "يجي يقولي أنا أجيب حاجتين. الحاجات كلها غالية. بدأنا نصنع السروجة."}, {"start": 164.89, "end": 167.43, "speaker": "Mohamed_Khayal", "text": "صنعنا سروجة من الشامواه ومن ال synthetic."}, {"start": 167.95, "end": 169.09, "speaker": "Mohamed_Khayal", "text": "عملنا tools تانية"}, {"start": 169.77, "end": 173.23, "speaker": "Mohamed_Khayal", "text": "تغطي ال-ال- الاحتياجات بتاعتنا. لقينا إن فيه طلب تاني من"}, {"start": 173.73, "end": 178.07, "speaker": "Mohamed_Khayal", "text": "دكاترة مشهورين في الطب البيطري ومزارع فروسية كتير. بدأنا إن احنا نعمل ورشة"}, {"start": 179.01, "end": 181.49, "speaker": "Mohamed_Khayal", "text": "من ال fiberglass السرج من جوة"}, {"start": 182.03, "end": 185.87, "speaker": "Mohamed_Khayal", "text": "والتكنولوجي اللي موجودة كلها من CWD زي ما كانت عينية أو ال wintec."}, {"start": 186.57, "end": 187.51, "speaker": "Mohamed_Khayal", "text": "مسكت الموضوع ده"}, {"start": 188.01, "end": 197.31, "speaker": "Mohamed_Khayal", "text": "وأنا background بتاعتي يعني MBA في ال entrepreneurship وأفهم شوية في الحاجات دي. فبدأت إن أنا أعمل شباب عندها فعلا ال passion وكلنا فعلا فرسان."}, {"start": 197.81, "end": 202.83, "speaker": "Mohamed_Khayal", "text": "حطينا الموضوع ده في دماغنا. عملنا الحمد لله في أول سنة 600 ألف revenue"}, {"start": 203.29, "end": 205.09, "speaker": "Mohamed_Khayal", "text": "في تاني سنة لينا مليون و800 ألف."}, {"start": 205.29, "end": 214.77, "speaker": "Nadine_Khayal", "text": "دلوقتي أنتم بتسألونا احنا بنقدم تدريب ولا ركوب حر ولا tools. احنا عملنا ecosystem يقدر يجمع كل ال services اللي بتخدم ركوب الخيل في مصر."}, {"start": 215.55, "end": 223.03, "speaker": "Nadine_Khayal", "text": "أو عملنا application بسيط. فكرة ال application إن هو يجمع كل أماكن آآآ ركوب الخيل في application واحدة. الناس تقدر تحجز ride"}, {"start": 223.49, "end": 232.43, "speaker": "Nadine_Khayal", "text": "تقدر تحجز تدريب كمان تقدر تشتري tools وتبيع tools بتاعتها وتقدر تشتري وتبيع خيل. فكرة ال application طبعا لسه محتاج تطوير عشان يوصل للمرحلة دي."}, {"start": 236.11, "end": 238.01, "speaker": "Mohamed_Khayal", "text": "احنا حلمنا إن احنا إن"}, {"start": 238.69, "end": 240.21, "speaker": "Mohamed_Khayal", "text": "أو عايزين الاستثمار بتاعكم"}, {"start": 240.79, "end": 245.03, "speaker": "Mohamed_Khayal", "text": "عشان ناخد مكان تاني في سقارة. احنا بدأنا في سقارة بس المشكلة في سقارة إن احنا"}, {"start": 245.57, "end": 246.59, "speaker": "Mohamed_Khayal", "text": "طلعنا trend جدا."}, {"start": 247.05, "end": 247.31, "speaker": "Mohamed_Khayal", "text": "آآآ"}, {"start": 247.89, "end": 252.93, "speaker": "Mohamed_Khayal", "text": "مش عارف أقولها ازاي بس زي شارع عبد العزيز بدأ بمحل واحد دلوقتي هو بقى ناس كتير أوي."}, {"start": 253.55, "end": 256.41, "speaker": "Mohamed_Khayal", "text": "أنا-أنا كنت ال founder من أرب من 2020."}, {"start": 257.15, "end": 268.93, "speaker": "Mohamed_Khayal", "text": "لقيت إن فيه gap فعلا وحليتها. الناس دلوقتي copy and paste بس no innovate. احنا الحمد لله دلوقتي في راس سدر exclusive سيو exclusive. الساحل فيه عندنا competitor بس احنا أرقامنا ممكن تكون مختلفة شوية."}, {"start": 269.55, "end": 280.79, "speaker": "Mohamed_Khayal", "text": "الفكرة كلها إن احنا النهاردة عايزين نرجع سقارة تاني. عايزين نطور في ال application إن هو يبقى community app لكل الناس اللي في مصر اللي هما مش قليلين خالص. الاتحاد المصري للفروسية فيه 2500 فارس متسجل. أنا جاي من ال"}, {"start": 281.13, "end": 282.81, "speaker": "Mohamed_Khayal", "text": "background دي فأنا عارف الأرقام شوية."}, {"start": 283.61, "end": 287.31, "speaker": "Mohamed_Khayal", "text": "النهاردة الركوب الحر أكتر بكتير. سقارة بس فيها 300 مزرعة"}, {"start": 287.77, "end": 289.05, "speaker": "Mohamed_Khayal", "text": "أقل مزرعة فيها 10 خيل."}, {"start": 289.61, "end": 290.75, "speaker": "Mohamed_Khayal", "text": "احنا عملنا"}, {"start": 291.57, "end": 293.59, "speaker": "Mohamed_Khayal", "text": "extra mile مع الاتحاد الفروسية إن احنا كمان"}, {"start": 294.15, "end": 298.29, "speaker": "Mohamed_Khayal", "text": "من ضمن حلمنا الكبير إن شاء الله إن احنا ننظم أول ف- بطولة قدرة وتحمل"}, {"start": 298.87, "end": 302.59, "speaker": "Mohamed_Khayal", "text": "في مصر اللي أتقامت آآآ مرة واحدة سنة 2000 وسنة 2001"}, {"start": 303.05, "end": 304.25, "speaker": "Mohamed_Khayal", "text": "من الشيخ محمد بن راشد."}, {"start": 305.11, "end": 310.01, "speaker": "Mohamed_Khayal", "text": "البطولة دي هتجمع كل الاسطبلات اللي هدفها ركوب الحر في الصحرا بطريقة منظمة جدا."}, {"start": 310.85, "end": 311.23, "speaker": "Mohamed_Khayal", "text": "ال-"}, {"start": 311.89, "end": 313.25, "speaker": "Mohamed_Khayal", "text": "الصناعة بتاعتنا ما كانتش."}, {"start": 316.97, "end": 317.89, "speaker": "Ayman_Abbas", "text": "سيبه سيبه سيبه براحته."}, {"start": 317.93, "end": 318.77, "speaker": "Ayman_Abbas", "text": "خليه خليه خليه."}, {"start": 319.29, "end": 322.99, "speaker": "Mohamed_Khayal", "text": "الصناعة بتاعتنا ما كانتش ليها أي infrastructure ما كانتش ليها أي تنظيم."}, {"start": 323.69, "end": 327.11, "speaker": "Mohamed_Khayal", "text": "الموضوع دلوقتي احنا خدناه من تحت خالص. دلوقتي الحمد لله"}, {"start": 328.17, "end": 329.81, "speaker": "Mohamed_Khayal", "text": "بقى فيها تنظيم وبقينا."}, {"start": 330.65, "end": 332.09, "speaker": "Ayman_Abbas", "text": "ليه سيبه سيبه سيبه سيبه."}, {"start": 332.13, "end": 333.19, "speaker": "Mohamed_Khayal", "text": "آآآ لأ يعني خلاص."}, {"start": 333.35, "end": 334.57, "speaker": "Ayman_Abbas", "text": "عشان يعرف يتكلم براحته."}, {"start": 334.99, "end": 345.85, "speaker": "Mohamed_Khayal", "text": "هو جبل من الخيل الرسول عليه السلام قالها خير الخيل الأدهم الأقرح الأرسم محج للثلاث طلق اليمين. الحصان ده مميز أو حضرتكوا شايفين حصان حديث"}, {"start": 346.49, "end": 348.65, "speaker": "Mohamed_Khayal", "text": "فهو أقرح يعني عنده حتة بيضا هنا"}, {"start": 349.41, "end": 353.65, "speaker": "Mohamed_Khayal", "text": "أرسم يعني عنده في فته حتة بيضا رجليه كلها بيضا ما عدا واحدة بس اليمين"}, {"start": 354.25, "end": 358.89, "speaker": "Mohamed_Khayal", "text": "السودا. احنا أنا الحمد لله عندي قدرة إن أنا ألف بلاد مصر كلها أشوف"}, {"start": 359.43, "end": 360.31, "speaker": "Mohamed_Khayal", "text": "الحصان الكويس"}, {"start": 361.17, "end": 361.55, "speaker": "Mohamed_Khayal", "text": "فـ"}, {"start": 362.19, "end": 363.13, "speaker": "Mohamed_Khayal", "text": "من حبي للموضوع."}, {"start": 363.33, "end": 364.45, "speaker": "Ayman_Abbas", "text": "ده أنت جايبه وهو مور."}, {"start": 364.89, "end": 367.51, "speaker": "Mohamed_Khayal", "text": "أنا جايبه وهو عنده سنة ونص بالظبط."}, {"start": 367.85, "end": 369.33, "speaker": "Ayman_Abbas", "text": "وجايبه منين؟"}, {"start": 369.73, "end": 370.51, "speaker": "Mohamed_Khayal", "text": "جايبه من المنوفية."}, {"start": 370.83, "end": 371.39, "speaker": "Ayman_Abbas", "text": "يا رب عليه."}, {"start": 371.61, "end": 372.15, "speaker": "Ayman_Abbas", "text": "ابن مين بقى؟"}, {"start": 372.75, "end": 372.89, "speaker": "Mohamed_Khayal", "text": "لأ"}, {"start": 373.35, "end": 377.95, "speaker": "Mohamed_Khayal", "text": "هنا بقى دي الخيل آآآ حضرتك كان عارف حضرتك ملم في الخيل العربي والأنساب"}, {"start": 378.55, "end": 381.19, "speaker": "Mohamed_Khayal", "text": "بس احنا بنحب أي حصان يعني مش."}, {"start": 381.31, "end": 382.81, "speaker": "Ayman_Abbas", "text": "يعني عنده عنده pedigree ولا لأ؟"}, {"start": 382.87, "end": 383.01, "speaker": "Mohamed_Khayal", "text": "لأ."}, {"start": 383.83, "end": 386.71, "speaker": "Mohamed_Khayal", "text": "دي كمان في خطوة جاية اتكلمنا مع الاتحاد برضو ان احنا."}, {"start": 386.79, "end": 387.69, "speaker": "Ahmed_Tarek", "text": "حرام عليك لانه"}, {"start": 388.35, "end": 390.61, "speaker": "Ahmed_Tarek", "text": "لو ما عدوش Pedigree حرام عليك يبقى ما يسواش حاجة خالص."}, {"start": 391.51, "end": 392.57, "speaker": "Mohamed_Khayal", "text": "بالنسبة للناس في الشارع."}, {"start": 392.83, "end": 394.49, "speaker": "Ahmed_Tarek", "text": "بالنسبة لك بس ما يسواش بالنسبة للناس."}, {"start": 394.81, "end": 396.89, "speaker": "Ayman_Abbas", "text": "لا بس هو اسمه working horse آآ"}, {"start": 397.95, "end": 398.95, "speaker": "Ayman_Abbas", "text": "حصان بتاع شغل."}, {"start": 399.61, "end": 399.75, "speaker": "Ayman_Abbas", "text": "فا"}, {"start": 400.31, "end": 403.85, "speaker": "Ayman_Abbas", "text": "هو بيجيبوا ب confirmation معين. هو"}, {"start": 404.87, "end": 411.87, "speaker": "Ayman_Abbas", "text": "عضلاته كويسة كفله كويس. فالحصان يشتغل معاه في الشغل اللي هو عايزه دوت. وشكله كمان"}, {"start": 412.63, "end": 413.37, "speaker": "Ayman_Abbas", "text": "friendly يعني."}, {"start": 413.41, "end": 416.27, "speaker": "Ahmed_Tarek", "text": "بس هو مش هعرف اطلع منه فلوس من طلوقة مش هعرف اطلع منه فلوس من حاجة."}, {"start": 416.31, "end": 416.45, "speaker": "Ayman_Abbas", "text": "بس"}, {"start": 417.17, "end": 417.91, "speaker": "Ayman_Abbas", "text": "It's a different"}, {"start": 418.39, "end": 419.09, "speaker": "Ayman_Abbas", "text": "working horse."}, {"start": 419.15, "end": 419.63, "speaker": "Mohamed_Khayal", "text": "دي مدارس."}, {"start": 419.73, "end": 421.25, "speaker": "Ayman_Abbas", "text": "والخيل العربي آآ"}, {"start": 421.75, "end": 423.53, "speaker": "Ayman_Abbas", "text": "دي فلوسها في حتة ودي فلوسها في حتة."}, {"start": 423.57, "end": 430.09, "speaker": "Mohamed_Khayal", "text": "احنا كتير اوي بس مش مش متسافين. الناس اللي هي عندها خيل هدفه المتعة مش لتربية ال ال Pedigree او"}, {"start": 430.55, "end": 432.69, "speaker": "Mohamed_Khayal", "text": "ال ان احنا ننتج او او الكلام ده."}, {"start": 433.49, "end": 435.07, "speaker": "Mohamed_Khayal", "text": "القصة التانية في في الفروسية."}, {"start": 435.13, "end": 440.65, "speaker": "Ahmed_Tarek", "text": "انا اسف هقاطعك هقول لك المشكلة في ايه يا أيمن؟ المشكلة في ان هما بعد سن معين مبيبقوش بيتركبوا"}, {"start": 441.37, "end": 442.15, "speaker": "Ahmed_Tarek", "text": "ماقدرش تستعمله."}, {"start": 442.89, "end": 445.01, "speaker": "Ayman_Abbas", "text": "بيقعدوا لغاية عشرين سنة واحد وعشرين سنة."}, {"start": 445.15, "end": 447.33, "speaker": "Ahmed_Tarek", "text": "اه بس يبقى اكله غالي اوي بالنسبة لثمنه."}, {"start": 447.55, "end": 448.41, "speaker": "Ayman_Abbas", "text": "خلي بالك ال"}, {"start": 449.29, "end": 452.83, "speaker": "Ayman_Abbas", "text": "price بتاعه هتلاقيه مثلا هو جابه مثلا بعشرين ألف جنيه مثلا."}, {"start": 452.87, "end": 455.15, "speaker": "Ahmed_Tarek", "text": "المشكلة في اكله هو بياكل اغلى من تمنه بكتير."}, {"start": 456.75, "end": 457.73, "speaker": "Mohamed_Khayal", "text": "كان فعلا من العشرين ألف."}, {"start": 457.81, "end": 463.27, "speaker": "Ayman_Abbas", "text": "اه اه وبيعمله يعمل return on investment في تلات اربع خمس شهور."}, {"start": 463.55, "end": 464.03, "speaker": "Ahmed_Tarek", "text": "اه اوكي."}, {"start": 464.43, "end": 465.27, "speaker": "Ayman_Abbas", "text": "بالأكل بكل حاجة."}, {"start": 465.29, "end": 466.17, "speaker": "Ahmed_Tarek", "text": "لازم يكمل يشتغل."}, {"start": 466.23, "end": 469.33, "speaker": "Ayman_Abbas", "text": "يعني انت الحصة عنده هتلاقيها مش اقل من كام ألف جنيه."}, {"start": 469.49, "end": 471.59, "speaker": "Mohamed_Khayal", "text": "احنا مش بنعمل حصة احنا ندي course."}, {"start": 471.99, "end": 472.41, "speaker": "Ahmed_Tarek", "text": "course كام؟"}, {"start": 472.71, "end": 473.15, "speaker": "Ayman_Abbas", "text": "course كام؟"}, {"start": 473.27, "end": 474.57, "speaker": "Mohamed_Khayal", "text": "ال course كامل eight sessions"}, {"start": 475.05, "end": 476.45, "speaker": "Mohamed_Khayal", "text": "من zero to hero. يعني احنا بيجيلنا"}, {"start": 477.01, "end": 483.95, "speaker": "Mohamed_Khayal", "text": "ناس زي منتجين أفلام أو كده بيجوا يقولوا لنا احنا عايزين الفنان ده يركب في الوقت ده. ال course بتاعنا دلوقتي أربعة آلاف وخمسمائه."}, {"start": 484.07, "end": 488.67, "speaker": "Ahmed_Tarek", "text": "أوكيه أربعة آلاف وخمسمائه. الحصان ده ممكن يعمل من eight ل ten lessons a day."}, {"start": 489.23, "end": 491.79, "speaker": "Ahmed_Tarek", "text": "أوكيه فلو الحصة بحوالي"}, {"start": 492.61, "end": 496.27, "speaker": "Ahmed_Tarek", "text": "خمسميت ستميت جنيه يعني الحصان يعمل له في اليوم"}, {"start": 496.73, "end": 500.69, "speaker": "Ahmed_Tarek", "text": "أربعة آلاف جنيه وهو جايبه بعشرين ألف جنيه. أنت قلت ال revenue بتاعك."}, {"start": 501.27, "end": 502.97, "speaker": "Mohamed_Khayal", "text": "عشرين تلاتة وعشرين. احنا بدأنا."}, {"start": 503.11, "end": 505.97, "speaker": "Ahmed_Tarek", "text": "أربعة. أيمن بيركب بقى من وهو صغير يعني."}, {"start": 506.01, "end": 510.31, "speaker": "Mohamed_Khayal", "text": "لا أنا عندي معلومة. آآ وانا جاي يعني حاطط عيني على اتنين من sharks"}, {"start": 511.29, "end": 512.75, "speaker": "Mohamed_Khayal", "text": "عشان يبقوا ملهمين بالموضوع."}, {"start": 513.23, "end": 516.29, "speaker": "Mohamed_Khayal", "text": "وطبعا أي حد ي join معنا احنا نتشرف بده."}, {"start": 516.75, "end": 517.05, "speaker": "Mohamed_Khayal", "text": "احنا"}, {"start": 517.83, "end": 519.05, "speaker": "Mohamed_Khayal", "text": "bootstrap لحد دلوقتي"}, {"start": 519.71, "end": 521.45, "speaker": "Mohamed_Khayal", "text": "مفيش غيري أنا وندين وأختي."}, {"start": 523.23, "end": 523.45, "speaker": "Mohamed_Khayal", "text": "احنا"}, {"start": 524.03, "end": 526.03, "speaker": "Mohamed_Khayal", "text": "في عشرين أربعة وعشرين حققنا أربعتاشر مليون."}, {"start": 526.83, "end": 530.41, "speaker": "Mohamed_Khayal", "text": "عشرين أربعة وعشرين ضمينا راس سدر بالشراكة مع مصر إيطاليا."}, {"start": 530.45, "end": 532.09, "speaker": "Ahmed_Tarek", "text": "لغاية دلوقتي عشرين خمسة وعشرين كام."}, {"start": 532.61, "end": 533.99, "speaker": "Mohamed_Khayal", "text": "احنا في عشرين خمسة وعشرين."}, {"start": 534.47, "end": 538.49, "speaker": "Mohamed_Khayal", "text": "احنا كنا عاملين كده ونزلنا كده سنة عشان غياب ال location بتاع سقارة."}, {"start": 538.83, "end": 539.57, "speaker": "Ahmed_Tarek", "text": "نزلتم لكام؟"}, {"start": 540.07, "end": 541.61, "speaker": "Mohamed_Khayal", "text": "احنا دلوقتي حالًا سبعة مليون."}, {"start": 541.93, "end": 542.23, "speaker": "Ahmed_Tarek", "text": "سبعة مليون."}, {"start": 542.27, "end": 546.55, "speaker": "Mohamed_Khayal", "text": "بس لسه عندنا سيوة في الشتا لسه هتبدأ واحد عشرة. دلوقتي خيل مسافرة يعني."}, {"start": 546.83, "end": 548.97, "speaker": "Ahmed_Tarek", "text": "المكسب بتاعك تقريبا كام في المية؟"}, {"start": 549.33, "end": 552.53, "speaker": "Mohamed_Khayal", "text": "احنا دلوقتي حوالي تلاتين في المية من ال rides وال training"}, {"start": 553.17, "end": 555.13, "speaker": "Mohamed_Khayal", "text": "من الأدوات الفروسية خمسين في المية"}, {"start": 555.63, "end": 555.91, "speaker": "Mohamed_Khayal", "text": "وكمان."}, {"start": 556.11, "end": 556.59, "speaker": "Ahmed_Tarek", "text": "إجمالي"}, {"start": 557.35, "end": 561.47, "speaker": "Ahmed_Tarek", "text": "يعني على سبعة مليون جنيه المكسب بتاعك تقريبا كان تلاتين."}, {"start": 561.79, "end": 563.67, "speaker": "Mohamed_Khayal", "text": "ده أنهي مكسب؟ ده نوع ده gross؟"}, {"start": 564.93, "end": 565.29, "speaker": "Ayman_Abbas", "text": "ده net."}, {"start": 565.47, "end": 565.59, "speaker": "Mohamed_Khayal", "text": "هي."}, {"start": 566.29, "end": 568.79, "speaker": "Mohamed_Khayal", "text": "أنا نفسي بس تشوفوا ال ال ال gifts بتاعتنا."}, {"start": 568.95, "end": 570.71, "speaker": "Ahmed_Tarek", "text": "أنت أنت كنت مستهدف مين بقى؟"}, {"start": 571.25, "end": 572.27, "speaker": "Ahmed_Tarek", "text": "احنا في الأول خالص."}, {"start": 573.07, "end": 575.73, "speaker": "Ayman_Abbas", "text": "لا مين الاتنين shark بيقولك اللي أنت مستهدفهم."}, {"start": 575.91, "end": 576.39, "speaker": "Mohamed_Khayal", "text": "أيمن وأحمد."}, {"start": 576.45, "end": 577.85, "speaker": "Ayman_Abbas", "text": "أحمد واللي بيفهموا طبعا."}, {"start": 577.87, "end": 583.65, "speaker": "Ahmed_Tarek", "text": "أنا هديك أنا هديك معلومات بقى أقوى بقى. بشوي ملك الركوب الحر. حمادة ملك الركوب الحر."}, {"start": 586.09, "end": 588.07, "speaker": "Mohamed_Khayal", "text": "أنا ما بركبش خيل عشان بقوم اقف على الخيل."}, {"start": 589.15, "end": 589.87, "speaker": "Ayman_Abbas", "text": "أقصر عمره."}, {"start": 590.07, "end": 591.75, "speaker": "Mohamed_Khayal", "text": "بس يعني أنا أنا بحب ال"}, {"start": 593.07, "end": 596.43, "speaker": "Mohamed_Khayal", "text": "Show Jumping وأحمد بيحب تربية الخيل بس هما بيحبوا الركوب الحر."}, {"start": 599.95, "end": 607.79, "speaker": "Mohamed_Khayal", "text": "يعني احنا زي ما ندين كانت بتقول احنا عندنا الناس بتتعلم من من سن خمس سنين ل whatever. الركبة بتاعتنا فعلًا ما لهاش أي سن ولا أي experience نحتاجها."}, {"start": 608.41, "end": 608.81, "speaker": "Mohamed_Khayal", "text": "فا"}, {"start": 609.33, "end": 612.23, "speaker": "Mohamed_Khayal", "text": "يعني would be pleasure إن احنا لو حضرتك حاطط الموضوع في دماغك."}, {"start": 612.25, "end": 613.29, "speaker": "Ahmed_Tarek", "text": "الحصان ده ما يشيلنيش."}, {"start": 613.71, "end": 614.19, "speaker": "Ayman_Abbas", "text": "لا طبعًا."}, {"start": 614.47, "end": 615.31, "speaker": "Mohamed_Khayal", "text": "لا ما يشيلنيش والله."}, {"start": 615.41, "end": 617.37, "speaker": "Ahmed_Tarek", "text": "طب أنا تعرف تعلمني يا أيمن."}, {"start": 617.45, "end": 618.29, "speaker": "Mohamed_Khayal", "text": "خمسة وتسعين كيلو."}, {"start": 618.39, "end": 620.23, "speaker": "Ahmed_Tarek", "text": "ده أقوى من الحصان اللي أنت تركبه."}, {"start": 620.35, "end": 621.21, "speaker": "Mohamed_Khayal", "text": "لا لا بس أنا."}, {"start": 621.41, "end": 624.79, "speaker": "Ayman_Abbas", "text": "الخيل دي بتاع القدرة الخيل دي قدرة. الحصان ده بيمشي أربعين كيلو في اليوم."}, {"start": 626.35, "end": 626.63, "speaker": "Ahmed_Tarek", "text": "دائمًا"}, {"start": 627.09, "end": 627.85, "speaker": "Ahmed_Tarek", "text": "دائمًا ياخد بالبسط."}, {"start": 627.91, "end": 630.99, "speaker": "Mohamed_Khayal", "text": "لا لا بس أنا مش هفوت ده جاي ده جاي لغاية."}, {"start": 631.01, "end": 631.93, "speaker": "Ahmed_Tarek", "text": "أيمن بيركب إنجليزي."}, {"start": 632.09, "end": 632.87, "speaker": "Mohamed_Khayal", "text": "بسم الله الرحمن الرحيم."}, {"start": 635.01, "end": 635.81, "speaker": "Mohamed_Khayal", "text": "ما تتلقش على جبل."}, {"start": 636.87, "end": 638.09, "speaker": "Ahmed_Tarek", "text": "أهم حاجة ما يتزحلقش بس."}, {"start": 639.61, "end": 641.17, "speaker": "Mohamed_Khayal", "text": "بس الجبل كده اطلع. يلا بينا."}, {"start": 642.81, "end": 643.31, "speaker": "Mohamed_Khayal", "text": "شمال."}, {"start": 645.83, "end": 646.53, "speaker": "Mohamed_Khayal", "text": "بالراحة يا جبل."}, {"start": 647.21, "end": 648.83, "speaker": "Ahmed_Tarek", "text": "بالراحة جبل. طب اقفلوا الباب بقى."}, {"start": 653.53, "end": 654.67, "speaker": "Mohamed_Khayal", "text": "مستني ايه يا حاج في ال defire."}, {"start": 655.49, "end": 655.87, "speaker": "Ahmed_Tarek", "text": "خفيفة"}, {"start": 656.73, "end": 658.17, "speaker": "Ahmed_Tarek", "text": "defire خفيفة. يا جبل."}, {"start": 659.55, "end": 662.11, "speaker": "Ahmed_Tarek", "text": "عندكم عندكم الخيل بتاعكم؟ عندكم أمهات بتاعتكم ولا لا؟"}, {"start": 663.35, "end": 665.25, "speaker": "Mohamed_Khayal", "text": "برضو حضرتك بتتكلم معايا في حتة."}, {"start": 665.87, "end": 666.79, "speaker": "Ahmed_Tarek", "text": "ما عندكوش تربية خالص يعني."}, {"start": 666.99, "end": 670.03, "speaker": "Mohamed_Khayal", "text": "عندي تربية احنا عندنا دلوقتي حوالي سبعة وعشرين حصان بتخدم ال"}, {"start": 670.79, "end": 674.41, "speaker": "Mohamed_Khayal", "text": "clientele بتاعتنا في كل في كل ال locations اللي احنا اتكلمنا فيها دي."}, {"start": 674.79, "end": 676.03, "speaker": "Ahmed_Tarek", "text": "بس ما بتعملوش breeding يعني."}, {"start": 676.75, "end": 683.05, "speaker": "Mohamed_Khayal", "text": "لا لا بس بتروح مكان زي ما هي مثلا حصان زي جبل القمور كده نشوف فرسة تانية سودا شبهه فنجوزه."}, {"start": 683.21, "end": 683.81, "speaker": "Ahmed_Tarek", "text": "فقرصين يعني."}, {"start": 684.03, "end": 684.17, "speaker": "Mohamed_Khayal", "text": "اه"}, {"start": 685.69, "end": 697.67, "speaker": "Mohamed_Khayal", "text": "بس مش دي مش دي ال main concept بتاعتنا. main concept إن احنا نخلق ناس بتحب الموضوع وتفهمه. كلمة خيال عامة جت عشان تنقل من الفارس اللي بيروح يركب على طول لواحد بيطلع في الصحرا ممكن يطلع لوحده"}, {"start": 698.01, "end": 702.07, "speaker": "Mohamed_Khayal", "text": "حاطط ال airpods قاعد بيسمع أم كلثوم أو أنا يعني بعمل ده."}, {"start": 702.65, "end": 707.85, "speaker": "Mohamed_Khayal", "text": "وبعدين حصل معايا موقف مع الحصان لا أنزل أتعامل أشد الشريحة بتاعتي أعمل كده"}, {"start": 708.33, "end": 709.25, "speaker": "Mohamed_Khayal", "text": "أظبط الدنيا دي."}, {"start": 709.71, "end": 714.57, "speaker": "Mohamed_Khayal", "text": "فزي ما ندين كانت بتقول احنا مررنا حوالي سبع آلاف شخص. احنا محتاجين ناخدهم step تانية."}, {"start": 715.03, "end": 716.67, "speaker": "Mohamed_Khayal", "text": "حتة القدرة والتحمل لمحدش."}, {"start": 716.97, "end": 718.23, "speaker": "Ahmed_Tarek", "text": "السوق السوق كبير أوي."}, {"start": 718.45, "end": 718.75, "speaker": "Ayman_Abbas", "text": "أوي."}, {"start": 718.77, "end": 723.31, "speaker": "Ahmed_Tarek", "text": "جدًا كبير أوي أوي أوي أوي. لسه مفيش حد scratched. يعني أنت النهاردة كل."}, {"start": 723.37, "end": 724.91, "speaker": "Ayman_Abbas", "text": "الناس مش مهتمة أيمن ليه فعلًا؟"}, {"start": 725.29, "end": 729.29, "speaker": "Ahmed_Tarek", "text": "عشان مفيش حاجة منظمة. كل الحاجة كانت غير منظمة."}, {"start": 729.75, "end": 730.75, "speaker": "Ahmed_Tarek", "text": "ولا مفيش"}, {"start": 731.55, "end": 733.55, "speaker": "Ahmed_Tarek", "text": "حتت للبداية ومفيش curriculums"}, {"start": 734.29, "end": 743.01, "speaker": "Ahmed_Tarek", "text": "للأولاد الصغيرة. بس ده سوق كبير جدًا عشان كل الأطفال دائمًا أول حاجة بيبقوا عايزين يعملوها إن هما بيشوفوا حصان بيبقوا عايزين يبتدوا يركبوا. بس"}, {"start": 743.49, "end": 744.17, "speaker": "Ahmed_Tarek", "text": "بس هو."}, {"start": 745.34, "end": 749.38, "speaker": "Mohamed_Khayal", "text": "أول واحد يعمل الـ format بتاع التنظيم ده ووقف وكده"}, {"start": 750.0, "end": 757.14, "speaker": "Mohamed_Khayal", "text": "و I hope أن الخيل بتبقى نضيفة كده لما بتيجوا تركبوا الناس والشدة تبقى مظبوطة. أنت أما تروح هناك"}, {"start": 757.62, "end": 762.06, "speaker": "Mohamed_Khayal", "text": "في الـ other schools يعني لا أنت هتروح مرة هتروح مرة هتمشي مش هتكمل."}, {"start": 762.08, "end": 762.92, "speaker": "Ayman_Abbas", "text": "الموضوع محتاج location."}, {"start": 763.24, "end": 763.62, "speaker": "Mohamed_Khayal", "text": "أيوة صح."}, {"start": 763.68, "end": 764.48, "speaker": "Ayman_Abbas", "text": "يعني أنت لو بتقول"}, {"start": 765.1, "end": 773.34, "speaker": "Ayman_Abbas", "text": "سقارة دلوقتي الموضوع بي commercial وعشرين واحد. الموضوع سياحي اركب امشي أي كلام. لكن الموضوع محتاج location ومحتاج ring ومحتاج مكان يتدرب فيه."}, {"start": 773.8, "end": 777.26, "speaker": "Ayman_Abbas", "text": "ده مش pedigree ده حصان يعني فاهم للناس تستمتع بيه وتتعلم."}, {"start": 777.3, "end": 778.16, "speaker": "Mohamed_Khayal", "text": "وده investment واحد."}, {"start": 778.18, "end": 782.88, "speaker": "Ayman_Abbas", "text": "ده investment it's a different story. عشان هو بيقولك ولا أم ولا pedigree. بس the business works."}, {"start": 783.74, "end": 784.18, "speaker": "Mohamed_Khayal", "text": "في gift"}, {"start": 785.68, "end": 786.96, "speaker": "Mohamed_Khayal", "text": "tailor لحضرتك"}, {"start": 787.44, "end": 787.94, "speaker": "Mohamed_Khayal", "text": "أستاذ أيمن."}, {"start": 788.04, "end": 789.42, "speaker": "Ayman_Abbas", "text": "هو ميزة الـ pedigree؟"}, {"start": 789.7, "end": 789.84, "speaker": "Mohamed_Khayal", "text": "معذرتك."}, {"start": 789.9, "end": 791.94, "speaker": "Ayman_Abbas", "text": "لا ده فكرة كبيرة أوي."}, {"start": 792.06, "end": 792.9, "speaker": "Mohamed_Khayal", "text": "تحب تركب."}, {"start": 792.94, "end": 793.76, "speaker": "Ayman_Abbas", "text": "أيوة والله دي فكرة كبيرة"}, {"start": 793.8, "end": 794.7, "speaker": "Mohamed_Khayal", "text": "متع di حاجة راقية."}, {"start": 794.88, "end": 795.98, "speaker": "Ayman_Abbas", "text": "تحب تركب وشقي."}, {"start": 796.06, "end": 797.16, "speaker": "Mohamed_Khayal", "text": "عايز حضرتك بس تشوفها."}, {"start": 797.18, "end": 797.78, "speaker": "Ayman_Abbas", "text": "دي يعني لسه."}, {"start": 797.82, "end": 799.3, "speaker": "Mohamed_Khayal", "text": "أستاذ أحمد في فكرة دي tailor"}, {"start": 800.04, "end": 800.66, "speaker": "Mohamed_Khayal", "text": "لحضرتك هنا."}, {"start": 800.68, "end": 802.04, "speaker": "Ayman_Abbas", "text": "أيوة شفتها تسلم إيديك. شفتها والله."}, {"start": 802.5, "end": 803.08, "speaker": "Ayman_Abbas", "text": "هشوفها تاني."}, {"start": 804.24, "end": 804.54, "speaker": "Mohamed_Khayal", "text": "جبل."}, {"start": 805.34, "end": 806.16, "speaker": "Ayman_Abbas", "text": "اطلع خد لفة بقى."}, {"start": 807.22, "end": 808.44, "speaker": "Mohamed_Khayal", "text": "ظايقته إزاي؟"}, {"start": 808.96, "end": 810.46, "speaker": "Ayman_Abbas", "text": "والله it's very good quality."}, {"start": 811.42, "end": 812.34, "speaker": "Mohamed_Khayal", "text": "ربنا يخلي حضرتك."}, {"start": 814.26, "end": 815.02, "speaker": "Ayman_Abbas", "text": "برافو عليكم."}, {"start": 816.14, "end": 816.36, "speaker": "Mohamed_Khayal", "text": "طيب"}, {"start": 817.22, "end": 817.98, "speaker": "Mohamed_Khayal", "text": "نقول offers."}, {"start": 818.2, "end": 819.96, "speaker": "Ahmed_Tarek", "text": "كويس أنكم عملتوه دي ما جبتليش إزاي؟"}, {"start": 820.68, "end": 821.78, "speaker": "Ahmed_Tarek", "text": "عشان كده انت هتبقى."}, {"start": 822.98, "end": 824.14, "speaker": "Ayman_Abbas", "text": "هايل هايل هايل."}, {"start": 824.2, "end": 824.68, "speaker": "Bishoy_Azmy", "text": "أظن"}, {"start": 825.18, "end": 826.74, "speaker": "Bishoy_Azmy", "text": "دي رشوة رسمية."}, {"start": 827.98, "end": 829.46, "speaker": "Bishoy_Azmy", "text": "أنا ما جاليش غير أهو بتاع"}, {"start": 830.22, "end": 830.9, "speaker": "Bishoy_Azmy", "text": "بتاع الرجلين."}, {"start": 831.44, "end": 832.36, "speaker": "Bishoy_Azmy", "text": "فيعني."}, {"start": 832.44, "end": 833.4, "speaker": "Ayman_Abbas", "text": "عشان أنت هتركب."}, {"start": 833.54, "end": 834.14, "speaker": "Bishoy_Azmy", "text": "رشوة رسمية."}, {"start": 834.56, "end": 834.94, "speaker": "Ayman_Abbas", "text": "أنت هتركب."}, {"start": 835.0, "end": 835.58, "speaker": "Bishoy_Azmy", "text": "سجل."}, {"start": 835.64, "end": 836.12, "speaker": "Ayman_Abbas", "text": "عشان هتركب."}, {"start": 836.14, "end": 836.88, "speaker": "Bishoy_Azmy", "text": "سجل يا كاميرا."}, {"start": 836.92, "end": 837.42, "speaker": "Ayman_Abbas", "text": "عشان هتركب."}, {"start": 837.54, "end": 838.4, "speaker": "Bishoy_Azmy", "text": "سجل يا كاميرا."}, {"start": 838.46, "end": 839.04, "speaker": "Ayman_Abbas", "text": "عشان هتركب."}, {"start": 839.76, "end": 841.68, "speaker": "Mohamed_Khayal", "text": "الحمد لله إنك ما جبتليش."}, {"start": 841.74, "end": 844.0, "speaker": "Ayman_Abbas", "text": "غالية جدا جدا جدا جدا برة."}, {"start": 844.82, "end": 845.36, "speaker": "Ayman_Abbas", "text": "بس على قولك."}, {"start": 845.42, "end": 846.66, "speaker": "Mohamed_Khayal", "text": "شكلها كويس والـ quality كويسة."}, {"start": 846.66, "end": 847.1, "speaker": "Ayman_Abbas", "text": "على فكرة"}, {"start": 848.1, "end": 849.44, "speaker": "Ayman_Abbas", "text": "ده ده كويس أوي."}, {"start": 849.94, "end": 850.46, "speaker": "Mohamed_Khayal", "text": "جابلنا إيه؟"}, {"start": 850.62, "end": 850.96, "speaker": "Ayman_Abbas", "text": "وده يمسك."}, {"start": 851.0, "end": 851.58, "speaker": "Mohamed_Khayal", "text": "جابلنا إيه؟"}, {"start": 851.6, "end": 852.24, "speaker": "Ayman_Abbas", "text": "زي الكوب الحار."}, {"start": 852.34, "end": 852.8, "speaker": "Mohamed_Khayal", "text": "أهو بس."}, {"start": 853.18, "end": 854.52, "speaker": "Ayman_Abbas", "text": "أيوة ده اللي أنت محتاجه الكوب"}, {"start": 854.54, "end": 855.28, "speaker": "Mohamed_Khayal", "text": "أنت كل مرة."}, {"start": 855.58, "end": 857.0, "speaker": "Ayman_Abbas", "text": "عشان بتشرح الجينز على طول."}, {"start": 858.44, "end": 861.14, "speaker": "Mohamed_Khayal", "text": "البنطلون اللي حضرتك لابس ده حد من صحابي"}, {"start": 861.86, "end": 863.98, "speaker": "Mohamed_Khayal", "text": "بدأ إن هو يكتشف وجاب fabric"}, {"start": 864.48, "end": 867.9, "speaker": "Mohamed_Khayal", "text": "وهو وعدنا كمان إن هو يبقى الحاجات دي tailor لخيالك."}, {"start": 868.08, "end": 869.64, "speaker": "Ayman_Abbas", "text": "الله كاتبين لي اسمي عليه."}, {"start": 870.24, "end": 872.26, "speaker": "Ayman_Abbas", "text": "fabric حلوة وتقيلة."}, {"start": 872.73, "end": 874.73, "speaker": "Mohamed_Khayal", "text": "بالظبط. و durable عشان."}, {"start": 874.8, "end": 882.34, "speaker": "Ayman_Abbas", "text": "خلي بالك البتاع ده very technical يعني السرج ده إن هو يطلعه مفيش حد في مصر أنا بقالي في الموضوع ده"}, {"start": 883.12, "end": 886.36, "speaker": "Ayman_Abbas", "text": "very long time عمري ما شفت quality زي كده. it's very very technical."}, {"start": 886.4, "end": 889.28, "speaker": "Mohamed_Khayal", "text": "وده بتجلد synthetic يعني عندنا السرج بقى اللي"}, {"start": 889.28, "end": 894.7, "speaker": "Ayman_Abbas", "text": "عارف ده ممكن حمادة يساعدكم فيه جامد جدا عشان الـ leather work يطلع لكم حاجة"}, {"start": 895.2, "end": 895.66, "speaker": "Ayman_Abbas", "text": "بنفسه في"}, {"start": 897.28, "end": 898.36, "speaker": "Ayman_Abbas", "text": "في في الخليج كله."}, {"start": 898.5, "end": 898.98, "speaker": "Ahmed_Tarek", "text": "بيبقى عندنا."}, {"start": 899.06, "end": 900.94, "speaker": "Ayman_Abbas", "text": "مفيش ولا مفيش ولا مصنع."}, {"start": 901.1, "end": 902.32, "speaker": "Bishoy_Azmy", "text": "أنا very interested في"}, {"start": 903.08, "end": 903.94, "speaker": "Ayman_Abbas", "text": "Not a single"}, {"start": 904.9, "end": 907.28, "speaker": "Ayman_Abbas", "text": "producer كلهم في ألمانيا وفي هولندا وفي أمريكا."}, {"start": 907.9, "end": 917.36, "speaker": "Ayman_Abbas", "text": "عارف اللي أنا بقول لك عليه؟ بتنسمع اللي حمادة عليه؟ محمد عليه عارف كنت بقول لك على إيه؟ أرميس وجوتشي أريات والناس دي كلها ورامبا دول ده بالنسبة لهم."}, {"start": 917.64, "end": 917.94, "speaker": "Mohamed_Khayal", "text": "طبعا."}, {"start": 918.12, "end": 919.5, "speaker": "Ayman_Abbas", "text": "يعني بحر فلوس."}, {"start": 920.36, "end": 923.06, "speaker": "Ahmed_Tarek", "text": "محمد وندين أنتم بتحتاجوا في الـ locations بقى"}, {"start": 923.62, "end": 924.78, "speaker": "Ahmed_Tarek", "text": "بتحتاجوا مساحة أرض قد إيه؟"}, {"start": 925.22, "end": 927.12, "speaker": "Mohamed_Khayal", "text": "طيب أنا عندي two locations أنا"}, {"start": 928.0, "end": 931.84, "speaker": "Mohamed_Khayal", "text": "كنت بس عايز أرد على أستاذ بشوي في في الجزئية بتاعته وبعد كده هرجع لحضرتك."}, {"start": 933.0, "end": 944.64, "speaker": "Mohamed_Khayal", "text": "إحنا كنا محتاجين الـ investment إن إحنا نشتري أرض في سقارة. إن عدى النص فدان ممكن يبقى بالرقم اللي إحنا طالبينه ده. ما جيناش طالبين ask كبير ولا عاملين evaluation خطيرة. إحنا كل الموضوع إن إحنا فعلا"}, {"start": 945.12, "end": 947.54, "speaker": "Mohamed_Khayal", "text": "عايزين ننقل الصناعة دي تبقى تاخد حقها."}, {"start": 947.58, "end": 951.8, "speaker": "Ayman_Abbas", "text": "والكلمة الحلوة اللي نساني كل حاجة. أنت طالب evaluation كام؟ اتنين وعشرين ونص في المية تلاتة مليون."}, {"start": 952.08, "end": 952.78, "speaker": "Mohamed_Khayal", "text": "خمسة مليون."}, {"start": 952.78, "end": 952.8, "speaker": "Ayman_Abbas", "text": "مليون."}, {"start": 952.96, "end": 954.32, "speaker": "Mohamed_Khayal", "text": "اتنين وعشرين ونص في المية."}, {"start": 954.38, "end": 955.64, "speaker": "Ayman_Abbas", "text": "إشمعنى اتنين وعشرين ونص يعني؟"}, {"start": 955.98, "end": 960.08, "speaker": "Mohamed_Khayal", "text": "عشان حضرتك هت-ت-ت- debate معانا فهنحاول نوصلك خمسة وعشرين."}, {"start": 961.8, "end": 962.18, "speaker": "Ayman_Abbas", "text": "أيمن"}, {"start": 962.7, "end": 963.76, "speaker": "Ayman_Abbas", "text": "معلش أنا أسف"}, {"start": 964.54, "end": 966.26, "speaker": "Ayman_Abbas", "text": "عايزين نخش معاك أنا وانت بخمسين في المية."}, {"start": 979.46, "end": 990.84, "speaker": "Narrator_VO", "text": "قبل الفاصل محمد وندين وجبل دخلوا الـ tank. الـ sharks أعجبوا جدا بالمشروع خصوصا إن مفيش زيه في مصر. وبعد مناقشات عن مستقبل خيال"}, {"start": 990.9, "end": 993.94, "speaker": "Narrator_VO", "text": "والخدمات اللي بيقدمها ومدى أهميتها،"}, {"start": 994.4, "end": 1002.8, "speaker": "Narrator_VO", "text": "أحمد طارق قرر يقدم لهم offer منه هو وأيمن بخمسة مليون جنيه مقابل خمسين في المية من الشركة."}, {"start": 1003.36, "end": 1013.4, "speaker": "Narrator_VO", "text": "بس واضح إن الـ offer كان صادم لمحمد. فيا ترى محمد وندين هيعملوا إيه؟ وهل باقي الـ sharks هيتحمسوا ويقدموا عروض؟"}, {"start": 1014.28, "end": 1014.66, "speaker": "Narrator_VO", "text": "أيمن"}, {"start": 1015.18, "end": 1016.24, "speaker": "Ayman_Abbas", "text": "معلش أنا أسف"}, {"start": 1017.02, "end": 1018.74, "speaker": "Ayman_Abbas", "text": "عايزين نخش معاك أنا وانت بخمسين في المية."}, {"start": 1019.96, "end": 1021.22, "speaker": "Mohamed_Khayal", "text": "معاك مليون في المية."}, {"start": 1021.3, "end": 1023.24, "speaker": "Ayman_Abbas", "text": "يلا ونعمل حاجة بجد في المدارس."}, {"start": 1023.6, "end": 1024.92, "speaker": "Mohamed_Khayal", "text": "أنا معاك مليون في المية."}, {"start": 1026.24, "end": 1026.6, "speaker": "Ayman_Abbas", "text": "محمد."}, {"start": 1027.38, "end": 1028.4, "speaker": "Bishoy_Azmy", "text": "ولو عبد الله."}, {"start": 1030.0, "end": 1032.36, "speaker": "Mohamed_Khayal", "text": "عنده الفكرة دي أنا رأيي إن هو يخش فيها."}, {"start": 1032.7, "end": 1033.26, "speaker": "Ayman_Abbas", "text": "أه وتيجي."}, {"start": 1033.32, "end": 1035.78, "speaker": "Bishoy_Azmy", "text": "لا لا عبد الله عنده فكرة في دماغه دلوقتي."}, {"start": 1035.82, "end": 1036.54, "speaker": "Ayman_Abbas", "text": "وأنا وبعد"}, {"start": 1037.18, "end": 1037.58, "speaker": "Ayman_Abbas", "text": "كده أي حد."}, {"start": 1037.72, "end": 1040.32, "speaker": "Mohamed_Khayal", "text": "خلينا إحنا نعمل offer وخلي كل واحد يعمل offer."}, {"start": 1041.7, "end": 1043.88, "speaker": "Mohamed_Khayal", "text": "حتة أرض سقارة دي مهمة بالنسبة لنا إن إحنا."}, {"start": 1044.48, "end": 1045.86, "speaker": "Ayman_Abbas", "text": "ده كلام مقنع. ده كلام مقنع."}, {"start": 1046.32, "end": 1051.56, "speaker": "Bishoy_Azmy", "text": "بس أنا أنا للأسف الحاجة الوحيدة مش عايزك تحط فلوسك في الأرض. يعني عايزك تحط فلوسك في السرج."}, {"start": 1051.66, "end": 1051.82, "speaker": "Ayman_Abbas", "text": "سقارة."}, {"start": 1051.94, "end": 1053.98, "speaker": "Mohamed_Khayal", "text": "جاي لك بقى الحتة دي. حط فلوسك."}, {"start": 1054.02, "end": 1055.62, "speaker": "Ayman_Abbas", "text": "هيبقى يعني زي الـ showcase."}, {"start": 1055.64, "end": 1056.12, "speaker": "Ahmed_Tarek", "text": "العشر سنين."}, {"start": 1056.18, "end": 1057.94, "speaker": "Ayman_Abbas", "text": "الـ showcase بتاعه ما الناس اللي بتأجر هناك."}, {"start": 1058.72, "end": 1062.14, "speaker": "Bishoy_Azmy", "text": "فعلا من الناس هناك إن هي تلتزم بالكلمة والعقد إن هو."}, {"start": 1062.18, "end": 1063.2, "speaker": "Ayman_Abbas", "text": "موضوع مهم. لا لا"}, {"start": 1063.68, "end": 1064.34, "speaker": "Ayman_Abbas", "text": "سقارة فعلا."}, {"start": 1064.38, "end": 1067.74, "speaker": "Ahmed_Tarek", "text": "ما أنا بقولك أنا بقولك يا محمد بدل حتى ولا حتى إيجار أنت تخش"}, {"start": 1068.5, "end": 1070.64, "speaker": "Ahmed_Tarek", "text": "revenue share مع ناس عندها أراضي يعني."}, {"start": 1071.74, "end": 1073.2, "speaker": "Ayman_Abbas", "text": "أنا أسف هقاطعك في حاجة واحدة"}, {"start": 1073.72, "end": 1074.08, "speaker": "Ayman_Abbas", "text": "لأنه"}, {"start": 1074.58, "end": 1075.9, "speaker": "Ayman_Abbas", "text": "لأنه هو فيه مشكلة"}, {"start": 1076.36, "end": 1077.72, "speaker": "Ayman_Abbas", "text": "بتحصل دلوقتي بقالها سنتين تلاتة."}, {"start": 1078.4, "end": 1086.1, "speaker": "Ayman_Abbas", "text": "نزلت السمان الناس كلها بتأجر airbnb اللي بيخش عنده البيت تلاقي عنده بيت عنده أوضة فاضية بيأجرها بتلاتين دولار في اليوم."}, {"start": 1086.24, "end": 1086.38, "speaker": "Bishoy_Azmy", "text": "صح."}, {"start": 1086.48, "end": 1089.16, "speaker": "Ayman_Abbas", "text": "فنزلت السمان قلبت كلها من من خيل"}, {"start": 1089.64, "end": 1094.62, "speaker": "Ayman_Abbas", "text": "لكلها فنادق حتى الناس بتعمل الـ stable بتاعهم بتكمله خرسانة وبتعمل له أوض."}, {"start": 1095.12, "end": 1107.02, "speaker": "Ayman_Abbas", "text": "فبقى فيه سياحة جامدة جدًا جدًا في نازلة السمان وسقارة. فهو is not sustainable لأن الناس بقت شايفة الكلام ده وبقى فيه سياحة جامدة جدًا. فخوفي إن هو لو ما اشترى الأرض النهاردة ما يلاقيش حاجة يأجر عليها هناك. بيلاقي كل"}, {"start": 1107.04, "end": 1110.9, "speaker": "Ayman_Abbas", "text": "الأوتيلات ما يبقوش interested أصلًا بده. طب أنا معك مليون في المية investment-"}, {"start": 1111.06, "end": 1111.6, "speaker": "Mohamed_Khayal", "text": "زي ما أنت بتقول فيه"}, {"start": 1112.3, "end": 1113.02, "speaker": "Mohamed_Khayal", "text": "core locations،"}, {"start": 1113.56, "end": 1116.56, "speaker": "Mohamed_Khayal", "text": "فيه core locations حاجة زي سقارة زي ما أنت بتقول ممكن يبقى لازم يملك أرض هناك."}, {"start": 1117.02, "end": 1117.84, "speaker": "Mohamed_Khayal", "text": "بس لو عايز ينتشر-"}, {"start": 1118.08, "end": 1120.84, "speaker": "Ayman_Abbas", "text": "لا لا لا طبعا مليون في المية. أنا عندي مكان،"}, {"start": 1121.48, "end": 1123.42, "speaker": "Ayman_Abbas", "text": "عندي مكان كويس أوي. عندي two tracks اتعملوا،"}, {"start": 1124.02, "end": 1125.12, "speaker": "Ayman_Abbas", "text": "يعني عندي two tracks كبار يعني."}, {"start": 1125.34, "end": 1126.12, "speaker": "Mohamed_Khayal", "text": "بس مش في سقارة."}, {"start": 1126.44, "end": 1127.76, "speaker": "Ayman_Abbas", "text": "لا لا عندي two tracks على الصحراوي."}, {"start": 1127.98, "end": 1129.34, "speaker": "Mohamed_Khayal", "text": "احنا كان عندنا experience صغيرة"}, {"start": 1129.86, "end": 1133.78, "speaker": "Mohamed_Khayal", "text": "فيه حد كان عايزنا برضو هناك مكان بيربي حيوانات وأوتيل وكده."}, {"start": 1133.92, "end": 1134.62, "speaker": "Ayman_Abbas", "text": "أيوة هو كده برضو."}, {"start": 1135.4, "end": 1142.18, "speaker": "Mohamed_Khayal", "text": "كان على الصحراوي برضو بالظبط. روحنا لعامل أرض فظيعة boxes جميلة جدًا ومكيفة. بس كان عندنا حتة بس الناس-"}, {"start": 1142.2, "end": 1143.34, "speaker": "Ayman_Abbas", "text": "هو عندي boxes مكيفة يعني."}, {"start": 1143.4, "end": 1144.8, "speaker": "Mohamed_Khayal", "text": "الناس كلها بتروح هناك"}, {"start": 1145.46, "end": 1147.64, "speaker": "Mohamed_Khayal", "text": "ما تجيش تاني عشان المكان بعيد."}, {"start": 1147.7, "end": 1149.1, "speaker": "Ayman_Abbas", "text": "هو مش بعيد بقولك من هنا."}, {"start": 1149.32, "end": 1151.32, "speaker": "Mohamed_Farouk", "text": "هو أنت عايزها قد إيه؟ عايزها قد إيه؟"}, {"start": 1151.68, "end": 1152.06, "speaker": "Mohamed_Khayal", "text": "سقارة؟"}, {"start": 1152.44, "end": 1152.76, "speaker": "Mohamed_Farouk", "text": "يعني"}, {"start": 1153.22, "end": 1154.32, "speaker": "Mohamed_Farouk", "text": "حتى لو مش في سقارة."}, {"start": 1154.94, "end": 1156.24, "speaker": "Mohamed_Khayal", "text": "للتمرين ولا الركوب؟"}, {"start": 1156.5, "end": 1156.98, "speaker": "Mohamed_Farouk", "text": "الاتنين."}, {"start": 1157.58, "end": 1161.12, "speaker": "Mohamed_Khayal", "text": "التمرين أنا بحتاج ستين في تمانين. ده لو، لو أنا أو أقل-"}, {"start": 1161.16, "end": 1163.54, "speaker": "Mohamed_Farouk", "text": "يعني لو جبت لك خمس فدان في المنصورية."}, {"start": 1164.52, "end": 1166.1, "speaker": "Mohamed_Khayal", "text": "ده بالنسبة لي perfect بس ده يبقى تمرين."}, {"start": 1166.72, "end": 1169.2, "speaker": "Mohamed_Khayal", "text": "إنما أنا بستغل الصحرا بتاعة، بتاعة مصر."}, {"start": 1169.22, "end": 1171.04, "speaker": "Ayman_Abbas", "text": "الركوب الحر عايز صحرا جامدة."}, {"start": 1171.08, "end": 1171.74, "speaker": "Mohamed_Farouk", "text": "طبعًا اه."}, {"start": 1171.94, "end": 1172.56, "speaker": "Nadine_Khayal", "text": "سياحة يعني."}, {"start": 1172.64, "end": 1173.66, "speaker": "Mohamed_Khayal", "text": "فاحنا عندنا مكان في الهرم."}, {"start": 1173.94, "end": 1177.84, "speaker": "Ayman_Abbas", "text": "أيوة بس معلش عشان في حاجتين. في المدرسة، المدرسة"}, {"start": 1178.3, "end": 1184.28, "speaker": "Ayman_Abbas", "text": "زي ما أنت بتقول كده محمد مش محدئين أكتر من كده. خلاص، لكن للسياحة وللناس اللي عايزة fun وركوب حر لازم سقارة."}, {"start": 1184.36, "end": 1185.26, "speaker": "Mohamed_Farouk", "text": "أنا شايف اه مهم."}, {"start": 1185.48, "end": 1185.86, "speaker": "Ayman_Abbas", "text": "لكن هو-"}, {"start": 1185.9, "end": 1187.74, "speaker": "Mohamed_Khayal", "text": "سقارة ضروري."}, {"start": 1187.9, "end": 1188.42, "speaker": "Mohamed_Farouk", "text": "سقارة ضروري."}, {"start": 1188.56, "end": 1190.2, "speaker": "Ayman_Abbas", "text": "ضروري كده كده. بس المدرسة كمان ضروري."}, {"start": 1190.64, "end": 1193.98, "speaker": "Mohamed_Khayal", "text": "احنا متأخرين شوية لأن احنا بقالنا test and trial, test and trial."}, {"start": 1194.8, "end": 1199.74, "speaker": "Mohamed_Khayal", "text": "وأنا واقف قدام حضرتك النهاردة اتعرض علينا يعني شراكات كتير. بس أنا كنت حاطط vision كده"}, {"start": 1200.2, "end": 1201.4, "speaker": "Mohamed_Khayal", "text": "كل ما أتفرج على Watch it"}, {"start": 1201.94, "end": 1205.0, "speaker": "Mohamed_Khayal", "text": "أنا عايز أقف قدام الشباب دي وأتكلم قوي إن احنا-"}, {"start": 1205.22, "end": 1206.08, "speaker": "Mohamed_Farouk", "text": "أنا بحييك على ال"}, {"start": 1206.62, "end": 1208.28, "speaker": "Mohamed_Farouk", "text": "presentation وبحييك على ال،"}, {"start": 1209.22, "end": 1210.66, "speaker": "Mohamed_Farouk", "text": "على، على إن أنت"}, {"start": 1211.32, "end": 1212.92, "speaker": "Mohamed_Farouk", "text": "بلورت الموضوع في شكل"}, {"start": 1213.64, "end": 1218.54, "speaker": "Mohamed_Farouk", "text": "أول مرة يكون business حد يثق، يثق فيه والأهالي تقدر تثق فيه."}, {"start": 1219.12, "end": 1228.12, "speaker": "Mohamed_Farouk", "text": "وشركات السياحة لازم تثق فيه. يعني بدل ما الراجل يروح يخاطر بالسايح، لا عندك، أنت عندك،"}, {"start": 1228.6, "end": 1236.24, "speaker": "Mohamed_Farouk", "text": "عندك تقدر تتكلم كل شركات سياحة، كل الأوتيلات، كل المدارس، كل ال-ال-الناس المهتمية تعلم ولادها."}, {"start": 1236.88, "end": 1237.54, "speaker": "Mohamed_Farouk", "text": "عندك"}, {"start": 1238.02, "end": 1239.7, "speaker": "Mohamed_Farouk", "text": "very very large large"}, {"start": 1240.28, "end": 1240.52, "speaker": "Mohamed_Farouk", "text": "market."}, {"start": 1240.58, "end": 1244.06, "speaker": "Ayman_Abbas", "text": "أنا عندي في المدارس definitely ممكن أعمل curriculum كده. وعندنا كمان"}, {"start": 1244.78, "end": 1245.08, "speaker": "Ayman_Abbas", "text": "حاجة"}, {"start": 1245.98, "end": 1248.78, "speaker": "Ayman_Abbas", "text": "platform للسياحة ممكن برضو ندخله في"}, {"start": 1249.56, "end": 1250.06, "speaker": "Ayman_Abbas", "text": "الموضوع ده."}, {"start": 1250.36, "end": 1252.84, "speaker": "Mohamed_Farouk", "text": "يعني اللي هما بيقولوه إن"}, {"start": 1253.34, "end": 1256.18, "speaker": "Mohamed_Farouk", "text": "ال product بتاعك ده ممكن يتحول إلى"}, {"start": 1257.04, "end": 1257.4, "speaker": "Mohamed_Farouk", "text": "نادي،"}, {"start": 1258.64, "end": 1259.46, "speaker": "Mohamed_Farouk", "text": "نادي فروسية."}, {"start": 1260.08, "end": 1264.94, "speaker": "Mohamed_Farouk", "text": "والنادي ده ممكن لو اتعمل بتنظيم معين"}, {"start": 1265.66, "end": 1269.36, "speaker": "Mohamed_Farouk", "text": "يبقى له فروع في مصر ويتصدر ال product ده برة مصر."}, {"start": 1269.6, "end": 1270.26, "speaker": "Mohamed_Khayal", "text": "ده موضوعي."}, {"start": 1270.52, "end": 1271.14, "speaker": "Mohamed_Farouk", "text": "هو ده اللي هما"}, {"start": 1271.94, "end": 1272.22, "speaker": "Mohamed_Farouk", "text": "يعني-"}, {"start": 1272.76, "end": 1272.96, "speaker": "Mohamed_Khayal", "text": "صح."}, {"start": 1273.04, "end": 1274.28, "speaker": "Mohamed_Farouk", "text": "يعني بيحلموا بيه."}, {"start": 1274.44, "end": 1274.6, "speaker": "Mohamed_Khayal", "text": "صح."}, {"start": 1274.94, "end": 1277.94, "speaker": "Mohamed_Farouk", "text": "فده مشكلته الوحيدة المنهجية"}, {"start": 1278.8, "end": 1279.38, "speaker": "Mohamed_Farouk", "text": "إن احنا"}, {"start": 1279.9, "end": 1280.56, "speaker": "Mohamed_Farouk", "text": "بناخد"}, {"start": 1281.2, "end": 1288.58, "speaker": "Mohamed_Farouk", "text": "أنا شاطر ما بعلمش. يعني أنت تقدر تطلع كام واحد زيك بالظبط نفس ال training."}, {"start": 1288.78, "end": 1290.22, "speaker": "Mohamed_Khayal", "text": "يعني لو أنا بتكلم النهاردة"}, {"start": 1290.74, "end": 1297.78, "speaker": "Mohamed_Khayal", "text": "الحاجة اللي بتقولها دلوقتي very very very typical اللي احنا عايزين نعمله. بس احنا مش عايزين نروح في show jumping ولا في ال polo."}, {"start": 1299.04, "end": 1301.28, "speaker": "Ayman_Abbas", "text": "لا لا لا احنا بنتكلم basic ركوب."}, {"start": 1301.32, "end": 1301.8, "speaker": "Mohamed_Farouk", "text": "هو بيقولك-"}, {"start": 1302.08, "end": 1303.8, "speaker": "Mohamed_Khayal", "text": "basic ركوب بعد كده قدرة وتحمل."}, {"start": 1303.8, "end": 1309.6, "speaker": "Mohamed_Farouk", "text": "تطلع شباب يبقى عندك academy تطلع بيها شباب عندها منهج بسيط للأطفال من zero to hero."}, {"start": 1311.08, "end": 1312.86, "speaker": "Mohamed_Farouk", "text": "بس يبقى ممنهج يبقى ممنهج."}, {"start": 1313.52, "end": 1317.1, "speaker": "Mohamed_Farouk", "text": "عشان أما تروح للمدرسة تروح لحد تقدر تقول له أنا بشتغل."}, {"start": 1317.28, "end": 1318.52, "speaker": "Ayman_Abbas", "text": "خلاص الأهل مش عايزة أكتر من كده."}, {"start": 1319.14, "end": 1319.6, "speaker": "Ayman_Abbas", "text": "يعني مش عايزاها-"}, {"start": 1319.62, "end": 1329.34, "speaker": "Mohamed_Farouk", "text": "لا هو أنت بتتكلم على بيع وحجز وشرا ومش عارف إيه، وإنك تحجز في أي نادي وتبقى وممكن تعمل membership في كل النوادي بحيث"}, {"start": 1329.8, "end": 1330.44, "speaker": "Mohamed_Farouk", "text": "لما تروح،"}, {"start": 1331.46, "end": 1332.0, "speaker": "Mohamed_Farouk", "text": "كل ده"}, {"start": 1332.94, "end": 1335.02, "speaker": "Mohamed_Farouk", "text": "أنت لسه عامله نظري"}, {"start": 1335.68, "end": 1336.46, "speaker": "Mohamed_Farouk", "text": "عايز يبقى-"}, {"start": 1336.9, "end": 1337.46, "speaker": "Nadine_Khayal", "text": "عملي بالظبط."}, {"start": 1338.12, "end": 1339.2, "speaker": "Mohamed_Farouk", "text": "يتحول إلى فعل."}, {"start": 1339.5, "end": 1341.16, "speaker": "Ayman_Abbas", "text": "في منافس كبير ليك في مصر يعني فيه"}, {"start": 1341.9, "end": 1344.54, "speaker": "Ayman_Abbas", "text": "شركات كبيرة زي ما حمادة متخيل كده موجودة."}, {"start": 1344.78, "end": 1348.3, "speaker": "Mohamed_Khayal", "text": "اللي احنا بنقدمه كله مفيش حد بيقدمه في حتة التوسع في-"}, {"start": 1348.38, "end": 1349.2, "speaker": "Ayman_Abbas", "text": "في a lot of"}, {"start": 1349.78, "end": 1350.06, "speaker": "Ayman_Abbas", "text": "one"}, {"start": 1350.96, "end": 1354.74, "speaker": "Ayman_Abbas", "text": "of مدرب عنده مدرسة بس مفيش- اتفضل اتفضل."}, {"start": 1355.24, "end": 1355.66, "speaker": "Mohamed_Khayal", "text": "عبده يا فندم."}, {"start": 1356.22, "end": 1356.72, "speaker": "Mohamed_Khayal", "text": "بعد إذنك."}, {"start": 1359.24, "end": 1362.04, "speaker": "Mohamed_Khayal", "text": "عبدالله marketing manager عندنا وعنده حصان اسمه فهماني."}, {"start": 1363.26, "end": 1363.64, "speaker": "Mohamed_Farouk", "text": "برافو."}, {"start": 1364.32, "end": 1365.08, "speaker": "Mohamed_Khayal", "text": "اسمع يا عبد السمع."}, {"start": 1365.2, "end": 1365.66, "speaker": "Mohamed_Farouk", "text": "أهلًا أهلاً."}, {"start": 1366.34, "end": 1366.9, "speaker": "Mohamed_Farouk", "text": "أهلًا بيكم."}, {"start": 1368.52, "end": 1370.52, "speaker": "Mohamed_Farouk", "text": "آآآ حضرتك قلت لي السنة الجاية كام؟"}, {"start": 1371.62, "end": 1373.52, "speaker": "Mohamed_Farouk", "text": "لو أنت خدت الاستثمار ولقيت الأرض."}, {"start": 1373.74, "end": 1374.72, "speaker": "Mohamed_Khayal", "text": "احنا السنة الجاية عايزين-"}, {"start": 1375.0, "end": 1378.42, "speaker": "Mohamed_Farouk", "text": "أنا شايف، أنا شايف باللي احنا عايزين نعمله"}, {"start": 1379.04, "end": 1380.36, "speaker": "Mohamed_Farouk", "text": "احنا ما بنشتريش value."}, {"start": 1380.68, "end": 1382.8, "speaker": "Ayman_Abbas", "text": "بالظبط احنا نشتري تخيل وحلم."}, {"start": 1383.06, "end": 1387.72, "speaker": "Mohamed_Farouk", "text": "بنشتري ويعني مثلًا أنا رأيي لو احنا دخلنا احنا الخمسة في الموضوع ده"}, {"start": 1388.24, "end": 1388.68, "speaker": "Mohamed_Farouk", "text": "ممكن"}, {"start": 1389.36, "end": 1389.8, "speaker": "Mohamed_Farouk", "text": "يعني-"}, {"start": 1389.98, "end": 1390.88, "speaker": "Mohamed_Khayal", "text": "الصناعة تتحول."}, {"start": 1391.14, "end": 1395.9, "speaker": "Mohamed_Farouk", "text": "احنا لسه مقررين على فكرة قبل ما محمد يتكلم، لسه مقررين عمرنا ما هنخش الخمسة مع بعض."}, {"start": 1396.42, "end": 1398.36, "speaker": "Mohamed_Khayal", "text": "بس ده دليل إن أنتم بجد بتقدموا حاجة."}, {"start": 1398.42, "end": 1400.96, "speaker": "Mohamed_Farouk", "text": "لا لا يعني أنا شايف إن مثلًا"}, {"start": 1401.54, "end": 1402.66, "speaker": "Mohamed_Farouk", "text": "الأرض بتاعة-"}, {"start": 1403.14, "end": 1403.64, "speaker": "Ayman_Abbas", "text": "سقارة دي مهمة."}, {"start": 1403.64, "end": 1404.48, "speaker": "Mohamed_Farouk", "text": "بتاعة سقارة ما"}, {"start": 1405.06, "end": 1405.72, "speaker": "Mohamed_Farouk", "text": "تبقاش نص فدان."}, {"start": 1405.76, "end": 1406.9, "speaker": "Mohamed_Khayal", "text": "نص فدان تبقى فدان أو اتنين."}, {"start": 1406.92, "end": 1408.24, "speaker": "Mohamed_Farouk", "text": "فدان أو اتنين بحيث إن"}, {"start": 1408.86, "end": 1409.7, "speaker": "Mohamed_Farouk", "text": "يبقى center"}, {"start": 1410.24, "end": 1412.24, "speaker": "Mohamed_Farouk", "text": "للحاجات التانية اللي طلعت."}, {"start": 1412.26, "end": 1413.66, "speaker": "Ayman_Abbas", "text": "أنا كنت هقول لحمادة إنه يعني"}, {"start": 1414.4, "end": 1418.72, "speaker": "Ayman_Abbas", "text": "هو الموضوع مش فلوس، هو موضوعه الراجل قال إن هو كان عاوز الاتنين دول لأن الاتنين دول هيقدر يفهمهم."}, {"start": 1418.72, "end": 1419.5, "speaker": "Mohamed_Farouk", "text": "اللي فهمانين طبعًا."}, {"start": 1419.5, "end": 1422.4, "speaker": "Ayman_Abbas", "text": "حقيقة. لو احنا التلاتة نقدر نفيد برضو نتكلم بصراحة يعني."}, {"start": 1422.88, "end": 1427.6, "speaker": "Ayman_Abbas", "text": "لو احنا نقدر نفيد برضو ندخل علشان ننجح الفكرة إن الفكرة جميلة وواضح إن كلنا متحمسين."}, {"start": 1427.64, "end": 1431.18, "speaker": "Mohamed_Farouk", "text": "بس على شرط احنا الخمسة بس على شرط. أنا عندي شرط واحد."}, {"start": 1431.4, "end": 1432.24, "speaker": "Nadine_Khayal", "text": "اتفضل."}, {"start": 1432.5, "end": 1432.7, "speaker": "Mohamed_Farouk", "text": "أنا،"}, {"start": 1433.48, "end": 1435.66, "speaker": "Mohamed_Farouk", "text": "أنا طبعًا أصغر من خمسين سنة يعني بس،"}, {"start": 1436.8, "end": 1437.98, "speaker": "Mohamed_Farouk", "text": "بس هتعلمني"}, {"start": 1438.92, "end": 1441.18, "speaker": "Mohamed_Farouk", "text": "أركب الخيل. أنا لحد دلوقتي ما ركبتش."}, {"start": 1441.22, "end": 1444.08, "speaker": "Mohamed_Khayal", "text": "اللي فيها دلوقتي. شايفين الحد هنا."}, {"start": 1444.54, "end": 1446.54, "speaker": "Ayman_Abbas", "text": "أنا نفسي بس بقولك مشفق على الخيل بس."}, {"start": 1446.72, "end": 1447.54, "speaker": "Mohamed_Farouk", "text": "لا لا ما تستاهلش."}, {"start": 1448.26, "end": 1448.28, "speaker": "Mohamed_Farouk", "text": "لا."}, {"start": 1448.34, "end": 1449.46, "speaker": "Ayman_Abbas", "text": "احنا الخمسة هنخش-"}, {"start": 1449.78, "end": 1450.72, "speaker": "Mohamed_Khayal", "text": "ممكن تشوف له اتنين."}, {"start": 1450.92, "end": 1454.36, "speaker": "Ayman_Abbas", "text": "احنا الخمسة هنخش بأوفر بعد إذنكم سبعة مليون لخمسين في المية."}, {"start": 1457.05, "end": 1460.79, "speaker": "Ayman_Abbas", "text": "وعايز اقولك على حاجة كمان مهمة. هقول لك الخيل مشكلتي في الخيل."}, {"start": 1461.21, "end": 1469.93, "speaker": "Bishoy_Azmy", "text": "خليه عشان هو شكله مستريحش للoffer ده خلينا نفهم منه برضو عشان احنا عايزين نساعده اكتر من اي حاجة فنفهم منه. انا مش عايز اجي اجي عليه قوي في."}, {"start": 1470.27, "end": 1471.19, "speaker": "Ayman_Abbas", "text": "بس انا هقول لك على حاجة"}, {"start": 1472.07, "end": 1473.37, "speaker": "Ayman_Abbas", "text": "مهمة في الخيل انا شايفها."}, {"start": 1474.23, "end": 1475.29, "speaker": "Ayman_Abbas", "text": "الخيل دايما"}, {"start": 1476.37, "end": 1477.85, "speaker": "Ayman_Abbas", "text": "يعني انا كان نفسي اركب خيل"}, {"start": 1479.03, "end": 1481.05, "speaker": "Ayman_Abbas", "text": "معرفش اركب خيل ولا لا. كان نفسي اركب خيل وانا صغير."}, {"start": 1481.93, "end": 1483.21, "speaker": "Ayman_Abbas", "text": "موجودة لل privileged"}, {"start": 1484.23, "end": 1487.51, "speaker": "Ayman_Abbas", "text": "اللي هم الاطفال او الناس اللي هم عندهم فلوس."}, {"start": 1487.65, "end": 1488.99, "speaker": "Nadine_Khayal", "text": "لا مبقاش الموضوع كده دلوقتي."}, {"start": 1489.31, "end": 1490.33, "speaker": "Ayman_Abbas", "text": "لا انا بتكلم على ايامي."}, {"start": 1490.37, "end": 1490.95, "speaker": "Bishoy_Azmy", "text": "بس هو احمد"}, {"start": 1491.55, "end": 1492.67, "speaker": "Bishoy_Azmy", "text": "زي ما بشويكي بيقول."}, {"start": 1492.71, "end": 1492.79, "speaker": "Ayman_Abbas", "text": "انت"}, {"start": 1493.29, "end": 1498.05, "speaker": "Ayman_Abbas", "text": "يا باشا الخيل النهاردة anybody that can afford يودي"}, {"start": 1498.75, "end": 1501.67, "speaker": "Ayman_Abbas", "text": "ابنه مدرسة كورة. He can afford يودي له مدرسة"}, {"start": 1501.67, "end": 1502.55, "speaker": "Bishoy_Azmy", "text": "بس انا معرفش ايمن."}, {"start": 1504.67, "end": 1505.61, "speaker": "Ayman_Abbas", "text": "عايزة awareness و marketing."}, {"start": 1505.65, "end": 1506.49, "speaker": "Bishoy_Azmy", "text": "عايزة awareness."}, {"start": 1506.53, "end": 1507.11, "speaker": "Ayman_Abbas", "text": "اه ال awareness."}, {"start": 1507.57, "end": 1509.61, "speaker": "Ayman_Abbas", "text": "انت متخيل الركوب الحر ده في الصحرا"}, {"start": 1510.15, "end": 1512.75, "speaker": "Ayman_Abbas", "text": "حاجة مش غالية بس متعة انك انت ماشي على 20"}, {"start": 1513.67, "end": 1521.63, "speaker": "Ayman_Abbas", "text": "كيلو. انا كنت بروح اركب حر زمان في الهرم من تلاتين سنة بس كنت بروح اركب زي الحمير اللي هو رجليه عاملة كده وعمال بطين لإن عايز اركب وخلاص."}, {"start": 1521.77, "end": 1523.19, "speaker": "Bishoy_Azmy", "text": "انت ال offer جالك حسيت ان."}, {"start": 1523.23, "end": 1531.91, "speaker": "Mohamed_Khayal", "text": "انا عايز اقول اول حاجة احنا الاستثمار بتاعكم ايا كان هو بكام او فين. احنا عايزين نعمل ارض عشان فعلا قصة الايجار ده"}, {"start": 1532.71, "end": 1532.89, "speaker": "Mohamed_Khayal", "text": "احنا."}, {"start": 1533.07, "end": 1533.47, "speaker": "Bishoy_Azmy", "text": "مفيش مشكلة."}, {"start": 1533.95, "end": 1534.39, "speaker": "Ayman_Abbas", "text": "ده ده اللي"}, {"start": 1535.27, "end": 1535.53, "speaker": "Ayman_Abbas", "text": "احنا."}, {"start": 1535.61, "end": 1537.05, "speaker": "Bishoy_Azmy", "text": "One is done. One is okay."}, {"start": 1537.61, "end": 1539.01, "speaker": "Mohamed_Khayal", "text": "رقم اتنين احنا النهاردة"}, {"start": 1539.67, "end": 1547.39, "speaker": "Mohamed_Khayal", "text": "ال brand بتاعنا عايزين نوديه ل سبوجا معرض اللي بيتعمل في المانيا كل سنة او دبي horse fair. عندنا فعلا quality وناس"}, {"start": 1547.87, "end": 1551.31, "speaker": "Mohamed_Khayal", "text": "يعني فعلا شاطرة حرفية جدا ان احنا السرج ده"}, {"start": 1551.85, "end": 1552.69, "speaker": "Mohamed_Khayal", "text": "شبه handmade."}, {"start": 1553.59, "end": 1555.45, "speaker": "Bishoy_Azmy", "text": "حتى الاسم حلو. الاسم حلو اوي."}, {"start": 1555.87, "end": 1567.67, "speaker": "Mohamed_Khayal", "text": "خيال هي representative لمصر وتاريخ حتى ال packaging بتاعنا لازم hierographical والحاجات زي كدة. الحاجة التالتة اللي انا عايز اقولها ان انا النهاردة انا اقدر اعمل اي مكان سياحي مرسى"}, {"start": 1567.71, "end": 1570.61, "speaker": "Mohamed_Khayal", "text": "علم، شرم، غردقة ايا كان ال location."}, {"start": 1570.65, "end": 1570.97, "speaker": "Ayman_Abbas", "text": "ساحل."}, {"start": 1572.79, "end": 1573.87, "speaker": "Mohamed_Khayal", "text": "ساحل."}, {"start": 1573.93, "end": 1575.77, "speaker": "Ayman_Abbas", "text": "يعني حد انا انا ان شاء الله"}, {"start": 1576.43, "end": 1576.55, "speaker": "Ayman_Abbas", "text": "من"}, {"start": 1577.11, "end": 1579.77, "speaker": "Ayman_Abbas", "text": "من اول ال project واحنا قايلين احنا will have"}, {"start": 1580.29, "end": 1581.05, "speaker": "Ayman_Abbas", "text": "a school"}, {"start": 1581.71, "end": 1582.47, "speaker": "Ayman_Abbas", "text": "horse riding school."}, {"start": 1582.51, "end": 1585.05, "speaker": "Bishoy_Azmy", "text": "احمد طب try to يعني كدة package the deal بطريقة اصح."}, {"start": 1585.09, "end": 1587.85, "speaker": "Ayman_Abbas", "text": "لا لا انا اقول سبعة مليون معلش انا اسف والله انا نفسي اساعد."}, {"start": 1588.21, "end": 1589.89, "speaker": "Mohamed_Khayal", "text": "سبعة مليون مش هتعرف تجيب لنا ارض."}, {"start": 1589.97, "end": 1592.25, "speaker": "Ayman_Abbas", "text": "لا هجيب ارض طبعا. لا سبعة مليون تجيب لك ارض في الشور."}, {"start": 1592.55, "end": 1593.13, "speaker": "Nadine_Khayal", "text": "و tools."}, {"start": 1593.33, "end": 1594.73, "speaker": "Bishoy_Azmy", "text": "انت كنت طالب كام؟ تلاتة؟"}, {"start": 1594.97, "end": 1595.33, "speaker": "Mohamed_Khayal", "text": "خمسة."}, {"start": 1596.87, "end": 1598.31, "speaker": "Ayman_Abbas", "text": "لا لا سبعة مليون تجيب لك ارض في الشور."}, {"start": 1598.97, "end": 1600.03, "speaker": "Ayman_Abbas", "text": "لو بنتكلم على اسعار تجيب"}, {"start": 1601.53, "end": 1602.11, "speaker": "Ayman_Abbas", "text": "لك ارض."}, {"start": 1602.15, "end": 1606.53, "speaker": "Mohamed_Khayal", "text": "احنا ال app عندنا عايزين نعمله زي be fit app او paddle finder يعني حاجة community."}, {"start": 1606.57, "end": 1616.89, "speaker": "Ayman_Abbas", "text": "لا لا هو خد بالك برضو عشان اقول لك على حاجة ال offer ال offer مش هيبقى سبعة مليون بس. هقول لك بس الميزة الميزة فينا ايه؟ الميزة فينا ايه؟ انا اسف يعني ان سبعة مليون واي حاجة الشركة هتحتاجها"}, {"start": 1617.39, "end": 1617.99, "speaker": "Ayman_Abbas", "text": "حتى لغاية"}, {"start": 1618.53, "end": 1623.75, "speaker": "Ayman_Abbas", "text": "تلاتة اربعة خمسة مليون تانيين كل واحد من الشركاء هيدي shareholder loan او جارية مساهمين."}, {"start": 1623.79, "end": 1630.63, "speaker": "Bishoy_Azmy", "text": "يعني احنا ممكن نكبر الارض نشتري احنا ارض زيادة جنبها بحيث نعمل لك الارض احنا هنوفر لك ارض من الفلوس."}, {"start": 1630.69, "end": 1632.21, "speaker": "Mohamed_Khayal", "text": "ان انت تاخد ال technical"}, {"start": 1633.93, "end": 1637.29, "speaker": "Mohamed_Khayal", "text": "catalogues بتاعتك والحاجة تطلع من عند حمادة من المابيكا."}, {"start": 1637.81, "end": 1639.85, "speaker": "Ayman_Abbas", "text": "بس والله يا ايمن اهم من الحاجات دي"}, {"start": 1640.41, "end": 1642.05, "speaker": "Ayman_Abbas", "text": "اللي انت بتقول عليه ان يبقى فيه"}, {"start": 1642.57, "end": 1644.53, "speaker": "Ayman_Abbas", "text": "مش لل privileged يتعمل marketing."}, {"start": 1644.73, "end": 1645.07, "speaker": "Mohamed_Khayal", "text": "100%"}, {"start": 1645.07, "end": 1647.35, "speaker": "Bishoy_Azmy", "text": "الطلب يعرفه ان الكلام ده ممكن يبقى يعني اعملوه."}, {"start": 1647.39, "end": 1647.81, "speaker": "Mohamed_Khayal", "text": "ده 100%."}, {"start": 1648.01, "end": 1649.87, "speaker": "Bishoy_Azmy", "text": "ممكن يبقى line تاني exclusive كده كمان."}, {"start": 1649.91, "end": 1651.17, "speaker": "Mohamed_Khayal", "text": "طبعا 100%."}, {"start": 1651.25, "end": 1654.21, "speaker": "Bishoy_Azmy", "text": "احنا الناس ال influencers الجماعة اللي هم بياخدوا فلوس"}, {"start": 1654.77, "end": 1657.07, "speaker": "Bishoy_Azmy", "text": "عشان يعملوا stories هم بييجوا عندنا وبيدفعوا."}, {"start": 1657.27, "end": 1658.03, "speaker": "Ayman_Abbas", "text": "هنظبطها هنظبطها."}, {"start": 1658.07, "end": 1658.35, "speaker": "Mohamed_Khayal", "text": "احنا"}, {"start": 1658.99, "end": 1663.49, "speaker": "Mohamed_Khayal", "text": "page الانستجرام بتاعتنا حوالي تسعين الف دلوقتي كل الناس اللي بتيجي بتاخد ال experience فعلا."}, {"start": 1663.73, "end": 1663.95, "speaker": "Bishoy_Azmy", "text": "Bravo."}, {"start": 1664.59, "end": 1664.77, "speaker": "Bishoy_Azmy", "text": "bravo."}, {"start": 1664.77, "end": 1665.25, "speaker": "Mohamed_Khayal", "text": "الناس اللي بترجع."}, {"start": 1665.69, "end": 1667.57, "speaker": "Bishoy_Azmy", "text": "محمد ريق جدا بسم الله ما شاء الله."}, {"start": 1667.75, "end": 1669.89, "speaker": "Mohamed_Khayal", "text": "اهم حاجة نساعد فيها actually هي ال awareness."}, {"start": 1670.61, "end": 1680.33, "speaker": "Mohamed_Khayal", "text": "يعني الناس لازم تعرف اهمية اهمية الصناعة دي والخير اللي في الخيل. انت طبعا انت ادرى مني يعني الرسول صلى وسلم قال لك الخير في نواة الخيل."}, {"start": 1680.77, "end": 1683.77, "speaker": "Ayman_Abbas", "text": "الشركة اللي عملت be fit app دي احنا"}, {"start": 1684.23, "end": 1684.93, "speaker": "Ayman_Abbas", "text": "دي تبعنا انا."}, {"start": 1684.95, "end": 1688.05, "speaker": "Mohamed_Khayal", "text": "انا بتمرن calisthenics معاهم انا وولادي يعني."}, {"start": 1688.07, "end": 1689.25, "speaker": "Bishoy_Azmy", "text": "بتمرن مع be fit؟"}, {"start": 1689.45, "end": 1689.57, "speaker": "Mohamed_Khayal", "text": "اه."}, {"start": 1690.19, "end": 1690.51, "speaker": "Bishoy_Azmy", "text": "كويس قوي."}, {"start": 1691.97, "end": 1692.85, "speaker": "Ayman_Abbas", "text": "الخير"}, {"start": 1693.37, "end": 1694.47, "speaker": "Ayman_Abbas", "text": "زي ما عبدالله بيقول في الخيل."}, {"start": 1694.53, "end": 1698.11, "speaker": "Bishoy_Azmy", "text": "هي عايزة تبقى كدة. اه ما احنا نقدر نخليه ال app."}, {"start": 1698.15, "end": 1701.07, "speaker": "Ayman_Abbas", "text": "بص انا هديك هديك برضو offer تاني خمسة مليون جنيه"}, {"start": 1701.61, "end": 1707.45, "speaker": "Ayman_Abbas", "text": "لتلاتين في المية اللي انت طالبه من تلاتين في المية بدل اتنين وعشرين ونص يبقوا تلاتين في المية. احنا الخمسة برضو."}, {"start": 1707.51, "end": 1708.81, "speaker": "Bishoy_Azmy", "text": "لا يا ايمن معلش انا اسف."}, {"start": 1708.85, "end": 1710.99, "speaker": "Ayman_Abbas", "text": "لا لا معلش عشان يمكن هو مش عايز خمسين في المية."}, {"start": 1711.39, "end": 1712.23, "speaker": "Mohamed_Khayal", "text": "ما اعرفش يعني."}, {"start": 1712.33, "end": 1714.01, "speaker": "Bishoy_Azmy", "text": "خليه counter. هو counter لو عايز."}, {"start": 1714.09, "end": 1716.37, "speaker": "Ayman_Abbas", "text": "احنا عايزين نساعد هو يختار ده او يختار ده."}, {"start": 1717.29, "end": 1720.85, "speaker": "Mohamed_Khayal", "text": "مين صاحب القرار؟ هنروح فين؟ انا كده كده عارف ان انا معايا ناس"}, {"start": 1721.47, "end": 1723.21, "speaker": "Mohamed_Khayal", "text": "يعني انا بطمح ان انا ابقى حد"}, {"start": 1723.73, "end": 1724.05, "speaker": "Mohamed_Khayal", "text": "يعني."}, {"start": 1724.17, "end": 1724.71, "speaker": "Bishoy_Azmy", "text": "لا يا باشا."}, {"start": 1725.35, "end": 1737.19, "speaker": "Mohamed_Khayal", "text": "احنا بنتكلم النهاردة في ال decisions انا انا على الارض اكتر عارف ايه ايه طلبات السوق. شايف الناس بتبقى عايزة الامهات تبقى عايزة كورس بكذا عشان توفر في المدارس وهنا وهنا"}, {"start": 1737.23, "end": 1737.43, "speaker": "Mohamed_Khayal", "text": "وهنا."}, {"start": 1737.61, "end": 1747.39, "speaker": "Ayman_Abbas", "text": "احنا هنخلينا احنا هنساعدك في كل حاجة وهنخلي single point of يعني حد من عندنا يبقى هو الوحيد اللي بيتكلم معاك واحنا كلنا معاك بنساعدك."}, {"start": 1748.07, "end": 1752.87, "speaker": "Ayman_Abbas", "text": "بس انت رد على ال offer دلوقتي عشان عشان بعد كده نقدر نتكلم في التفاصيل."}, {"start": 1753.35, "end": 1762.95, "speaker": "Ayman_Abbas", "text": "يعني احنا دي حاجة احنا كلنا انبسطنا بيها فكلنا يعني احنا متفقين ان احنا ما نعملش كده كتير بس عشان هي حاجة حلوة قوي يعني."}, {"start": 1763.77, "end": 1765.01, "speaker": "Mohamed_Khayal", "text": "خمسة مليون تلاتين في المية؟"}, {"start": 1765.49, "end": 1766.99, "speaker": "Bishoy_Azmy", "text": "او سبعة مليون خمسين في المية."}, {"start": 1767.05, "end": 1768.83, "speaker": "Ayman_Abbas", "text": "وانا رأيي تاخد سبعة مليون خمسين في المية."}, {"start": 1769.31, "end": 1769.77, "speaker": "Ayman_Abbas", "text": "اقولك ليه؟"}, {"start": 1770.07, "end": 1770.57, "speaker": "Mohamed_Khayal", "text": "يلا بينا."}, {"start": 1770.81, "end": 1771.41, "speaker": "Ayman_Abbas", "text": "بجد اقولك ليه؟"}, {"start": 1771.49, "end": 1771.83, "speaker": "Mohamed_Khayal", "text": "يا ريت."}, {"start": 1771.99, "end": 1776.67, "speaker": "Ayman_Abbas", "text": "اقول لك. ايمن ايمن عنده حق ايمن عنده حق وبيعني الكلام اللي بيقوله مية في المية."}, {"start": 1777.43, "end": 1780.93, "speaker": "Ayman_Abbas", "text": "وهو من قلبه حتى هيدي لي خمسة مليون على خمسة في المية عشان ينجح الفكرة."}, {"start": 1781.45, "end": 1782.55, "speaker": "Ayman_Abbas", "text": "بس دايما الواحد"}, {"start": 1783.07, "end": 1784.77, "speaker": "Ayman_Abbas", "text": "بيحب يبقى يعمل حاجة"}, {"start": 1785.23, "end": 1789.01, "speaker": "Ayman_Abbas", "text": "عشان هو شايفها انها كويسة دلوقتي. لكن بعد خمس سنين كل واحد هيتلخ."}, {"start": 1790.87, "end": 1793.33, "speaker": "Ayman_Abbas", "text": "لو الموضوع لفكرة حلوة و good cause"}, {"start": 1793.79, "end": 1796.11, "speaker": "Ayman_Abbas", "text": "بس مش مش هيجيب ل ايمن فلوس حقيقية"}, {"start": 1797.03, "end": 1797.33, "speaker": "Ayman_Abbas", "text": "خلاص"}, {"start": 1798.43, "end": 1804.61, "speaker": "Ayman_Abbas", "text": "هيبقى مهتم بيه بس مش مهتم بيه زي ما حاجة هتنور وتكسر الدنيا ويبقى عنده نسبة فيها. صدقني والله بقول لك من قلبي."}, {"start": 1805.23, "end": 1806.71, "speaker": "Ayman_Abbas", "text": "فلازم كل واحد يبقى عنده"}, {"start": 1808.25, "end": 1812.83, "speaker": "Ayman_Abbas", "text": "involvement وتلاقي له فلوس غير ال good cause. انا عارف ان كل حد يعني كل حد."}, {"start": 1813.73, "end": 1814.41, "speaker": "Ayman_Abbas", "text": "بس good cause ده"}, {"start": 1815.79, "end": 1816.93, "speaker": "Ayman_Abbas", "text": "ساعات الواحد بينساه شوية."}, {"start": 1818.02, "end": 1818.6, "speaker": "Ayman_Abbas", "text": "وبيفتكر"}, {"start": 1819.12, "end": 1819.44, "speaker": "Ayman_Abbas", "text": "ال"}, {"start": 1820.16, "end": 1826.2, "speaker": "Ayman_Abbas", "text": "sustainability بتبقى في ال profit اللي هيحصل إيه؟ أنا بقولك والله من قلبي أنا بقولك. طيب خد القرار خد القرار."}, {"start": 1826.34, "end": 1827.06, "speaker": "Mohamed_Khayal", "text": "أنا مش هاخد"}, {"start": 1827.68, "end": 1835.62, "speaker": "Mohamed_Khayal", "text": "استشارة حد أو كده الموضوع معايا يعني. وشاكرة بس كلها إن احنا عارف إن بيبقى فيه due diligence بتبقى موجودة. احنا startup والخيل فيها."}, {"start": 1835.94, "end": 1838.26, "speaker": "Ayman_Abbas", "text": "لا مفيش due diligence مش هنعمل عليك due diligence."}, {"start": 1838.3, "end": 1838.62, "speaker": "Mohamed_Khayal", "text": "أنا بس."}, {"start": 1838.96, "end": 1839.88, "speaker": "Ayman_Abbas", "text": "أنا بعد إذنكم بقى أنا"}, {"start": 1840.46, "end": 1841.92, "speaker": "Ayman_Abbas", "text": "هاخد الموضوع ده وconsult."}, {"start": 1843.64, "end": 1845.76, "speaker": "Mohamed_Khayal", "text": "فاحنا عندنا شوية حاجات"}, {"start": 1846.96, "end": 1851.62, "speaker": "Mohamed_Khayal", "text": "طبعا كانت بتيجي كاش أكتر عشان الناس زي ما حضرتك فاهم القصة بتاعتنا بتبقى ماشية ازاي."}, {"start": 1852.1, "end": 1856.26, "speaker": "Mohamed_Khayal", "text": "ففي حاجات معانا طبعا في contracts وحاجات زي كده زي شراكات طويلة وكده."}, {"start": 1856.32, "end": 1857.04, "speaker": "Ayman_Abbas", "text": "انت دلوقتي رد"}, {"start": 1857.68, "end": 1862.34, "speaker": "Ayman_Abbas", "text": "على ال offers بس دلوقتي رد على ال offers بس دلوقتي. أنهي offer اللي يريحك أكتر خده."}, {"start": 1864.22, "end": 1866.18, "speaker": "Mohamed_Khayal", "text": "ممكن نخليها 6 مليون 40 في المية؟"}, {"start": 1867.5, "end": 1867.78, "speaker": "Ayman_Abbas", "text": "ماشي"}, {"start": 1869.4, "end": 1870.72, "speaker": "Ayman_Abbas", "text": "خليها 7 مليون 50 في المية."}, {"start": 1872.88, "end": 1875.02, "speaker": "Ayman_Abbas", "text": "أنا بقولك ليك صدقني مش هتفرق معايا خالص."}, {"start": 1875.52, "end": 1878.22, "speaker": "Ayman_Abbas", "text": "أنا بقولك ليك دي بالذات ليك لازم يبقى كل واحد."}, {"start": 1879.62, "end": 1880.66, "speaker": "Ayman_Abbas", "text": "He has shares in the company."}, {"start": 1881.56, "end": 1887.44, "speaker": "Ayman_Abbas", "text": "هيساعدوا ك good good cause. لكن ممكن متكملش كمان سنتين تلاتة. ممكن يقولك أه الشركة أه."}, {"start": 1888.4, "end": 1888.68, "speaker": "Mohamed_Khayal", "text": "بيا"}, {"start": 1889.36, "end": 1893.46, "speaker": "Mohamed_Khayal", "text": "وندين بقالنا 5 سنين. فبيكو احنا مش هنكمل احنا هنطير."}, {"start": 1893.8, "end": 1899.1, "speaker": "Ayman_Abbas", "text": "إن شاء الله 400. بس ما لك أنتم اللي هتطيروا محدش فينا هيتأركم احنا هنساعدكم عشان بس تبقى فاهم."}, {"start": 1899.56, "end": 1902.1, "speaker": "Ayman_Abbas", "text": "يعني هنساعدكم بس محدش هيتأركم غير غيركم نفسكم."}, {"start": 1902.58, "end": 1906.74, "speaker": "Ayman_Abbas", "text": "وفي شوية هتاخدنا دبي بعد إذنك. أنا ده اللي كنت عاوز أقوله إنه يعني هو فيه. ما تخلي."}, {"start": 1907.32, "end": 1914.08, "speaker": "Ayman_Abbas", "text": "فيه interest في دبي مش طبيعي. وفيه يعني بقالهم 40 سنة already متطورين في كل حاجة equestrian."}, {"start": 1914.28, "end": 1916.1, "speaker": "Nadine_Khayal", "text": "مع إن ال locations في مصر أقوى بكتير."}, {"start": 1916.56, "end": 1917.28, "speaker": "Ayman_Abbas", "text": "100 في المية."}, {"start": 1917.84, "end": 1918.82, "speaker": "Mohamed_Khayal", "text": "بس هم هم الموضوع."}, {"start": 1919.88, "end": 1925.32, "speaker": "Ayman_Abbas", "text": "وهي واحنا لو وفرنالهم ال location بال quality. هم ييجوا هنا. اللي هما expect."}, {"start": 1926.28, "end": 1927.72, "speaker": "Mohamed_Khayal", "text": "أكبر مستثمر في مصر الإمارات."}, {"start": 1927.78, "end": 1928.14, "speaker": "Ayman_Abbas", "text": "طبعًا يعني."}, {"start": 1928.38, "end": 1929.92, "speaker": "Mohamed_Khayal", "text": "يتمنوا ييجوا في حاجة بيحبوها زي."}, {"start": 1930.34, "end": 1931.82, "speaker": "Nadine_Khayal", "text": "بيحبوا جدًا ييجوا مصر يعني."}, {"start": 1931.84, "end": 1932.0, "speaker": "Ayman_Abbas", "text": "طبعًا."}, {"start": 1932.02, "end": 1933.72, "speaker": "Nadine_Khayal", "text": "الحاجة دي تبقى موجودة دي هتبقى قوية أوي."}, {"start": 1934.62, "end": 1938.5, "speaker": "Ayman_Abbas", "text": "ومعادش بعد إذنك ممكن نزود على offer يا أيمن بعد إذنك إن احنا هنعمل مدرسة عندك"}, {"start": 1939.24, "end": 1942.24, "speaker": "Ayman_Abbas", "text": "في ال locations. Yes yes. ونعمل عند عبد الله بعد إذنك."}, {"start": 1943.24, "end": 1949.26, "speaker": "Ayman_Abbas", "text": "ممكن نعمل مدرسة عندك على أنا كنت بقولك احنا جاهزين pilot من بكرة في one of our locations. طب خلاص يبقى كده عندك one location."}, {"start": 1949.96, "end": 1956.28, "speaker": "Ayman_Abbas", "text": "وأنا عندي location تعمله فيه مدرسة. أوكي؟ يعني هنزود لكم من الحاجات دي كنت هعمله في المدرسة. وأنا هخليلك coordinator في دبي أنا مش بفهم."}, {"start": 1956.74, "end": 1957.74, "speaker": "Ayman_Abbas", "text": "بس أنتم اتكلموا معاه"}, {"start": 1958.36, "end": 1969.98, "speaker": "Ayman_Abbas", "text": "how he can push بدل ما تروحوا ألمانيا. احنا لسه ما وصلناش لمستوى إن احنا نبقى global brand يعني. احنا عاوزين ننجح ال business بتاعنا هنا. فلو نروح الأول مثلًا حاجة زي دبي عشان الموضوع يسمع الناس تقدر تيجي. صح. فممكن"}, {"start": 1970.02, "end": 1971.28, "speaker": "Ayman_Abbas", "text": "يبقى يعني حاجة تفيد."}, {"start": 1973.52, "end": 1974.62, "speaker": "Ayman_Abbas", "text": "خليها 6. انت اختار مع."}, {"start": 1974.66, "end": 1974.86, "speaker": "Mohamed_Khayal", "text": "احنا"}, {"start": 1975.52, "end": 1977.06, "speaker": "Mohamed_Khayal", "text": "جامدين في الركون الحر وجامدين في الصناعة."}, {"start": 1977.42, "end": 1979.76, "speaker": "Ayman_Abbas", "text": "اعمل انت اللي عايز. اعمل انت عايز. الختار اللي انت عايزه."}, {"start": 1982.8, "end": 1986.28, "speaker": "Ayman_Abbas", "text": "انت عايز ال-- انت موافق على ال 50 مقابل 7 مليون."}, {"start": 1987.06, "end": 1987.26, "speaker": "Ayman_Abbas", "text": "يلا."}]};
+  const STORAGE_KEY_GLOBAL = 'sharktank_studio_global_v3';
+  const STORAGE_PREFIX_EP = 'sharktank_studio_ep_v3_';
+
+  let segments = [];
+  let activeSegIndex = null;
+  let playingSegIndex = null;
+  let segmentEndTimer = null;
+  let soloSpeakerName = null;
+  let soloQueueIndices = [];
+  let soloQueuePos = 0;
+  let undoStack = [];
+  let redoStack = [];
+  let layoutMode = 'side'; // 'side' or 'top'
+  let dockWidthPx = 470;
+  let dockHeightPx = 390;
+
+  // Web Audio API Studio Vocal Isolation nodes
+  let audioCtx = null, sourceNode = null, highpassNode = null, vocalBoostNode = null, lowpassNode = null, compressorNode = null;
+  let isVocalFilterConnected = false;
+
+  const player = document.getElementById('player');
+  const palette = ['#0284c7','#16a34a','#d97706','#9333ea','#e11d48','#0d9488','#4f46e5','#ca8a04','#db2777','#059669'];
+  const spkColors = {};
+
+  function getColor(spk) {
+    if (!spkColors[spk]) {
+      const idx = Object.keys(spkColors).length % palette.length;
+      spkColors[spk] = palette[idx];
+    }
+    return spkColors[spk];
+  }
+
+  // =========================================================
+  // PERSISTENT AUTO-SAVE (localStorage + IndexedDB for Video)
+  // =========================================================
+  function flashAutoSaveBadge(msg = '💾 Auto-Saved') {
+    const b = document.getElementById('autoSaveBadge');
+    if (!b) return;
+    b.textContent = msg;
+    b.style.background = 'rgba(34,197,94,0.28)';
+    setTimeout(() => { b.style.background = 'rgba(34,197,94,0.12)'; }, 350);
+  }
+
+  function saveWorkspaceState() {
+    try {
+      const uri = document.getElementById('fileUri').value.trim() || 'video_10_part_03';
+      const wrap = document.getElementById('tableWrap');
+      const state = {
+        fileUri: uri,
+        segments: segments,
+        activeSegIndex: activeSegIndex,
+        soloSpeakerName: soloSpeakerName,
+        scrollTop: wrap ? wrap.scrollTop : 0,
+        currentTime: player.currentTime || 0,
+        layoutMode: layoutMode,
+        dockWidthPx: dockWidthPx,
+        dockHeightPx: dockHeightPx,
+        updatedAt: Date.now()
+      };
+      localStorage.setItem(STORAGE_KEY_GLOBAL, JSON.stringify(state));
+      localStorage.setItem(STORAGE_PREFIX_EP + uri, JSON.stringify(segments));
+      flashAutoSaveBadge('💾 Auto-Saved');
+    } catch (e) {
+      console.warn('AutoSave warning:', e);
+    }
+  }
+
+  function restoreWorkspaceState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_GLOBAL);
+      if (!raw) return false;
+      const state = JSON.parse(raw);
+      if (!state || !Array.isArray(state.segments) || state.segments.length === 0) return false;
+      segments = state.segments;
+      document.getElementById('fileUri').value = state.fileUri || 'video_10_part_03';
+      activeSegIndex = state.activeSegIndex;
+      soloSpeakerName = state.soloSpeakerName || null;
+      if (state.dockWidthPx) {
+        dockWidthPx = state.dockWidthPx;
+        document.getElementById('pinnedDock').style.width = dockWidthPx + 'px';
+      }
+      if (state.dockHeightPx) {
+        dockHeightPx = state.dockHeightPx;
+      }
+      if (state.layoutMode === 'top') {
+        layoutMode = 'side';
+        toggleLayoutMode();
+      }
+      syncSoloUIFromState();
+      renderAll();
+      const wrap = document.getElementById('tableWrap');
+      if (wrap && state.scrollTop) wrap.scrollTop = state.scrollTop;
+      flashAutoSaveBadge('💾 Restored Session');
+      return state;
+    } catch (e) {
+      console.warn('Restore warning:', e);
+      return false;
+    }
+  }
+
+  // IndexedDB to persist selected Video/Audio file across F5 Refresh!
+  function openMediaDB() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open('SharkTankStudioMediaDB', 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('mediaFiles')) {
+          db.createObjectStore('mediaFiles');
+        }
+      };
+      req.onsuccess = (e) => resolve(e.target.result);
+      req.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  async function cacheMediaFileInDB(file) {
+    try {
+      const db = await openMediaDB();
+      const tx = db.transaction('mediaFiles', 'readwrite');
+      tx.objectStore('mediaFiles').put(file, 'lastMediaFile');
+    } catch (e) {
+      console.warn('IndexedDB media save note:', e);
+    }
+  }
+
+  async function restoreMediaFileFromDB(savedTime = 0) {
+    try {
+      const db = await openMediaDB();
+      const tx = db.transaction('mediaFiles', 'readonly');
+      const req = tx.objectStore('mediaFiles').get('lastMediaFile');
+      req.onsuccess = () => {
+        const file = req.result;
+        if (file && file instanceof Blob) {
+          player.src = URL.createObjectURL(file);
+          player.addEventListener('loadedmetadata', function onMeta() {
+            player.removeEventListener('loadedmetadata', onMeta);
+            if (savedTime > 0 && savedTime < player.duration) {
+              player.currentTime = savedTime;
+            }
+            renderTimeline();
+          });
+          document.getElementById('liveTranscriptText').textContent = `Restored video: ${file.name}`;
+        }
+      };
+    } catch (e) {
+      console.warn('IndexedDB media restore note:', e);
+    }
+  }
+
+  function toggleLayoutMode() {
+    const wb = document.getElementById('workspaceBody');
+    const dock = document.getElementById('pinnedDock');
+    const btn = document.getElementById('layoutModeBtn');
+    if (layoutMode === 'side') {
+      layoutMode = 'top';
+      wb.classList.add('top-bottom-mode');
+      dock.style.height = dockHeightPx + 'px';
+      btn.textContent = '📐 Layout: Top-Bottom';
+    } else {
+      layoutMode = 'side';
+      wb.classList.remove('top-bottom-mode');
+      dock.style.height = '';
+      dock.style.width = dockWidthPx + 'px';
+      btn.textContent = '📐 Layout: Side-by-Side';
+    }
+    saveWorkspaceState();
+  }
+
+  // Interactive Drag Resizer for Splitter Bar
+  (function initSplitterDrag() {
+    const splitter = document.getElementById('splitterBar');
+    const dock = document.getElementById('pinnedDock');
+    let isDragging = false;
+
+    splitter.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      isDragging = true;
+      splitter.classList.add('dragging');
+      document.body.style.cursor = (layoutMode === 'side') ? 'col-resize' : 'row-resize';
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      if (layoutMode === 'side') {
+        const newW = Math.min(Math.max(280, e.clientX - 16), window.innerWidth * 0.78);
+        dockWidthPx = Math.round(newW);
+        dock.style.width = dockWidthPx + 'px';
+      } else {
+        const rect = dock.getBoundingClientRect();
+        const newH = Math.min(Math.max(190, e.clientY - rect.top), window.innerHeight * 0.75);
+        dockHeightPx = Math.round(newH);
+        dock.style.height = dockHeightPx + 'px';
+      }
+    });
+
+    window.addEventListener('mouseup', () => {
+      if (!isDragging) return;
+      isDragging = false;
+      splitter.classList.remove('dragging');
+      document.body.style.cursor = '';
+      saveWorkspaceState();
+    });
+
+    splitter.addEventListener('dblclick', () => {
+      if (layoutMode === 'side') {
+        dockWidthPx = 470;
+        dock.style.width = '470px';
+      } else {
+        dockHeightPx = 390;
+        dock.style.height = '390px';
+      }
+      saveWorkspaceState();
+    });
+  })();
+
+  function toggleCinemaVideoSize() {
+    document.getElementById('playerBox').classList.toggle('cinema-player');
+  }
+
+  function setTimelineZoom(factor, btn) {
+    const tl = document.getElementById('timeline');
+    tl.style.width = (factor * 100) + '%';
+    if (btn && btn.parentElement) {
+      btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active-speed'));
+      btn.classList.add('active-speed');
+    }
+  }
+
+  function updateUndoRedoButtons() {
+    const uBtn = document.getElementById('undoBtn');
+    const rBtn = document.getElementById('redoBtn');
+    if (uBtn) {
+      uBtn.textContent = `↩ Undo (${undoStack.length})`;
+      uBtn.style.opacity = undoStack.length > 0 ? '1' : '0.55';
+    }
+    if (rBtn) {
+      rBtn.textContent = `↪ Redo (${redoStack.length})`;
+      rBtn.style.opacity = redoStack.length > 0 ? '1' : '0.55';
+    }
+  }
+
+  function pushUndo() {
+    undoStack.push({
+      segments: JSON.parse(JSON.stringify(segments)),
+      activeSegIndex: activeSegIndex,
+      soloSpeakerName: soloSpeakerName
+    });
+    if (undoStack.length > 50) undoStack.shift();
+    redoStack = [];
+    updateUndoRedoButtons();
+  }
+
+  function undoLastAction() {
+    if (undoStack.length === 0) return;
+    stopPlayback();
+    redoStack.push({
+      segments: JSON.parse(JSON.stringify(segments)),
+      activeSegIndex: activeSegIndex,
+      soloSpeakerName: soloSpeakerName
+    });
+    const prev = undoStack.pop();
+    segments = prev.segments;
+    activeSegIndex = prev.activeSegIndex;
+    soloSpeakerName = prev.soloSpeakerName;
+    syncSoloUIFromState();
+    updateUndoRedoButtons();
+    renderAll();
+    saveWorkspaceState();
+  }
+
+  function redoLastAction() {
+    if (redoStack.length === 0) return;
+    stopPlayback();
+    undoStack.push({
+      segments: JSON.parse(JSON.stringify(segments)),
+      activeSegIndex: activeSegIndex,
+      soloSpeakerName: soloSpeakerName
+    });
+    const next = redoStack.pop();
+    segments = next.segments;
+    activeSegIndex = next.activeSegIndex;
+    soloSpeakerName = next.soloSpeakerName;
+    syncSoloUIFromState();
+    updateUndoRedoButtons();
+    renderAll();
+    saveWorkspaceState();
+  }
+
+  function syncSoloUIFromState() {
+    if (!soloSpeakerName) {
+      document.getElementById('soloSpeakerModeChk').checked = false;
+      document.getElementById('soloStatusBadge').textContent = '';
+      document.getElementById('clearSoloBtn').style.display = 'none';
+      document.getElementById('playAllSoloBtn').style.display = 'none';
+    } else {
+      document.getElementById('soloSpeakerModeChk').checked = true;
+      document.getElementById('soloStatusBadge').textContent = `🎯 ${soloSpeakerName}`;
+      document.getElementById('clearSoloBtn').style.display = 'inline-flex';
+      document.getElementById('playAllSoloBtn').style.display = 'inline-flex';
+    }
+  }
+
+  function setSpeed(rate, btn) {
+    player.playbackRate = rate;
+    if (btn && btn.parentElement) {
+      btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('active-speed'));
+      btn.classList.add('active-speed');
+    }
+  }
+
+  function formatMMSS(sec) {
+    const m = Math.floor(sec / 60);
+    const s = (sec % 60).toFixed(2).padStart(5, '0');
+    return `${String(m).padStart(2, '0')}:${s}`;
+  }
+
+  function initWebAudioFilter() {
+    if (audioCtx) return;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AudioContextClass();
+    sourceNode = audioCtx.createMediaElementSource(player);
+    highpassNode = audioCtx.createBiquadFilter();
+    highpassNode.type = 'highpass'; highpassNode.frequency.value = 165; highpassNode.Q.value = 0.85;
+    vocalBoostNode = audioCtx.createBiquadFilter();
+    vocalBoostNode.type = 'peaking'; vocalBoostNode.frequency.value = 1850; vocalBoostNode.Q.value = 1.0; vocalBoostNode.gain.value = 7.5;
+    lowpassNode = audioCtx.createBiquadFilter();
+    lowpassNode.type = 'lowpass'; lowpassNode.frequency.value = 5200; lowpassNode.Q.value = 0.8;
+    compressorNode = audioCtx.createDynamicsCompressor();
+    compressorNode.threshold.value = -26; compressorNode.knee.value = 18; compressorNode.ratio.value = 4;
+    compressorNode.attack.value = 0.003; compressorNode.release.value = 0.2;
+    sourceNode.connect(audioCtx.destination);
+    isVocalFilterConnected = false;
+  }
+
+  function toggleWebAudioVocalFilter() {
+    const enabled = document.getElementById('vocalFilterChk').checked;
+    try {
+      initWebAudioFilter();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      sourceNode.disconnect();
+      if (enabled) {
+        sourceNode.connect(highpassNode);
+        highpassNode.connect(vocalBoostNode);
+        vocalBoostNode.connect(lowpassNode);
+        lowpassNode.connect(compressorNode);
+        compressorNode.connect(audioCtx.destination);
+        isVocalFilterConnected = true;
+      } else {
+        sourceNode.connect(audioCtx.destination);
+        isVocalFilterConnected = false;
+      }
+    } catch (err) {
+      console.warn('Web Audio API filter note:', err);
+    }
+  }
+
+  // Loads episode: checks if user already has saved edits for this episode in localStorage first!
+  function switchEpisodePreset(key) {
+    if (!BUILTIN_PRESETS[key] || BUILTIN_PRESETS[key].length === 0) return;
+    if (segments.length > 0) pushUndo();
+    const savedEp = localStorage.getItem(STORAGE_PREFIX_EP + key);
+    if (savedEp) {
+      try {
+        const parsed = JSON.parse(savedEp);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          segments = parsed;
+        } else {
+          segments = JSON.parse(JSON.stringify(BUILTIN_PRESETS[key]));
+        }
+      } catch (e) {
+        segments = JSON.parse(JSON.stringify(BUILTIN_PRESETS[key]));
+      }
+    } else {
+      segments = JSON.parse(JSON.stringify(BUILTIN_PRESETS[key]));
+    }
+    document.getElementById('fileUri').value = key;
+    activeSegIndex = null;
+    soloSpeakerName = null;
+    clearSoloFilter();
+    renderAll();
+    saveWorkspaceState();
+  }
+
+  function resetCurrentEpisodeToFactory() {
+    const key = document.getElementById('fileUri').value.trim();
+    if (!BUILTIN_PRESETS[key]) {
+      alert('No factory preset found for File ID: ' + key);
+      return;
+    }
+    if (!confirm(`Reset all your saved edits on "${key}" back to the original factory preset?`)) return;
+    pushUndo();
+    localStorage.removeItem(STORAGE_PREFIX_EP + key);
+    segments = JSON.parse(JSON.stringify(BUILTIN_PRESETS[key]));
+    activeSegIndex = null;
+    soloSpeakerName = null;
+    clearSoloFilter();
+    renderAll();
+    saveWorkspaceState();
+  }
+
+  document.getElementById('mediaInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    player.src = URL.createObjectURL(file);
+    cacheMediaFileInDB(file);
+    const stem = file.name.replace(/\.[^/.]+$/, "");
+    const curUri = document.getElementById('fileUri').value.trim();
+    document.getElementById('fileUri').value = stem;
+    if (BUILTIN_PRESETS[stem] && curUri !== stem) {
+      switchEpisodePreset(stem);
+    } else {
+      saveWorkspaceState();
+    }
+  });
+
+  document.getElementById('labelInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const text = await file.text();
+    if (file.name.toLowerCase().endsWith('.csv')) {
+      parseCSVFile(text);
+    } else {
+      parseLabelFile(text);
+    }
+    saveWorkspaceState();
+  });
+
+  function parseCSVFile(text) {
+    if (segments.length > 0) pushUndo();
+    segments = [];
+    const lines = text.split(/\r?\n/).filter(l => l.trim());
+    if (lines.length < 2) return;
+    for (let i = 1; i < lines.length; i++) {
+      const row = lines[i].split(',');
+      if (row.length >= 5) {
+        const st = parseFloat(row[1]);
+        const en = parseFloat(row[2]);
+        const spk = (row[4] || 'speaker_0').trim();
+        const txt = row.slice(5).join(',').replace(/^"|"$/g, '').trim();
+        if (!isNaN(st) && !isNaN(en) && en > st) {
+          segments.push({ start: +st.toFixed(3), end: +en.toFixed(3), speaker: spk, text: txt });
+        }
+      }
+    }
+    segments.sort((a, b) => a.start - b.start || a.end - b.end);
+    renderAll();
+  }
+
+  function parseLabelFile(text) {
+    if (segments.length > 0) pushUndo();
+    const oldTexts = {};
+    segments.forEach(s => {
+      if (s.text) oldTexts[`${s.start.toFixed(1)}_${s.end.toFixed(1)}`] = s.text;
+    });
+    segments = [];
+    const lines = text.split(/\r?\n/);
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line || line.startsWith('#') || line.startsWith(';')) continue;
+      const parts = line.split(/\s+/);
+      if (parts[0] === 'SPEAKER' && parts.length >= 8) {
+        document.getElementById('fileUri').value = parts[1];
+        const start = parseFloat(parts[3]);
+        const dur = parseFloat(parts[4]);
+        const spk = parts[7];
+        if (!isNaN(start) && !isNaN(dur) && dur > 0) {
+          const end = +(start + dur).toFixed(3);
+          const key = `${start.toFixed(1)}_${end.toFixed(1)}`;
+          segments.push({ start: +start.toFixed(3), end: end, speaker: spk, text: oldTexts[key] || '' });
+        }
+      } else if (parts.length >= 2 && !isNaN(parseFloat(parts[0])) && !isNaN(parseFloat(parts[1]))) {
+        const start = parseFloat(parts[0]);
+        const end = parseFloat(parts[1]);
+        const spk = parts.slice(2).join('_') || 'speaker_0';
+        if (end > start) {
+          segments.push({ start: +start.toFixed(3), end: +end.toFixed(3), speaker: spk, text: '' });
+        }
+      }
+    }
+    const uri = document.getElementById('fileUri').value;
+    if (BUILTIN_PRESETS[uri]) {
+      const pList = BUILTIN_PRESETS[uri];
+      segments.forEach(s => {
+        if (!s.text) {
+          const match = pList.find(p => Math.abs(p.start - s.start) < 0.25 && Math.abs(p.end - s.end) < 0.25);
+          if (match) s.text = match.text;
+        }
+      });
+    }
+    segments.sort((a, b) => a.start - b.start || a.end - b.end);
+    activeSegIndex = null;
+    soloSpeakerName = null;
+    renderAll();
+  }
+
+  function sortSegments() {
+    pushUndo();
+    const wrap = document.getElementById('tableWrap');
+    const scrollPos = wrap.scrollTop;
+    segments.sort((a, b) => a.start - b.start || a.end - b.end);
+    renderAll();
+    wrap.scrollTop = scrollPos;
+    saveWorkspaceState();
+  }
+
+  function onSoloModeToggle() {
+    const chk = document.getElementById('soloSpeakerModeChk').checked;
+    if (!chk) {
+      clearSoloFilter();
+    } else if (activeSegIndex !== null && segments[activeSegIndex]) {
+      setSoloSpeaker(segments[activeSegIndex].speaker);
+    }
+  }
+
+  function setSoloSpeaker(spkName) {
+    if (soloSpeakerName === spkName) {
+      clearSoloFilter();
+      return;
+    }
+    soloSpeakerName = spkName;
+    syncSoloUIFromState();
+    applySoloVisibility();
+    renderSpeakerAnalytics();
+    saveWorkspaceState();
+  }
+
+  function clearSoloFilter() {
+    soloSpeakerName = null;
+    soloQueueIndices = [];
+    syncSoloUIFromState();
+    applySoloVisibility();
+    renderSpeakerAnalytics();
+    saveWorkspaceState();
+  }
+
+  function applySoloVisibility() {
+    document.querySelectorAll('#segTableBody tr').forEach((tr, idx) => {
+      const seg = segments[idx];
+      if (!seg) return;
+      if (soloSpeakerName && seg.speaker !== soloSpeakerName) {
+        tr.classList.add('hidden-by-solo');
+      } else {
+        tr.classList.remove('hidden-by-solo');
+      }
+    });
+    renderTimeline();
+  }
+
+  function applySearchFilter() {
+    const q = document.getElementById('searchInput').value.trim().toLowerCase();
+    document.querySelectorAll('#segTableBody tr').forEach((tr, idx) => {
+      const seg = segments[idx];
+      if (!seg) return;
+      if (!q) {
+        tr.classList.remove('hidden-by-search');
+        return;
+      }
+      const hay = ((seg.speaker || '') + ' ' + (seg.text || '')).toLowerCase();
+      if (hay.includes(q)) tr.classList.remove('hidden-by-search');
+      else tr.classList.add('hidden-by-search');
+    });
+  }
+
+  function highlightSelectedRow() {
+    document.querySelectorAll('#segTableBody tr').forEach((tr, idx) => {
+      if (idx === activeSegIndex) tr.classList.add('selected-row');
+      else tr.classList.remove('selected-row');
+    });
+  }
+
+  function selectRow(i) {
+    activeSegIndex = i;
+    highlightSelectedRow();
+    if (segments[i]) {
+      updateLiveCaption(segments[i]);
+    }
+  }
+
+  function updateLiveCaption(seg) {
+    const badge = document.getElementById('liveSpkBadge');
+    const txt = document.getElementById('liveTranscriptText');
+    if (!seg) return;
+    badge.style.background = getColor(seg.speaker);
+    badge.textContent = `${seg.speaker} [${seg.start.toFixed(2)}s - ${seg.end.toFixed(2)}s]`;
+    txt.textContent = seg.text || '— (No transcript text for this segment — type in table to add) —';
+  }
+
+  function renderSpeakerAnalytics() {
+    const strip = document.getElementById('speakerCardsStrip');
+    const qBtns = document.getElementById('quickSpeakerButtons');
+    strip.innerHTML = '';
+    qBtns.innerHTML = '';
+
+    const counts = {};
+    const durs = {};
+    let totalSpeech = 0;
+    segments.forEach(s => {
+      const d = Math.max(0, s.end - s.start);
+      counts[s.speaker] = (counts[s.speaker] || 0) + 1;
+      durs[s.speaker] = (durs[s.speaker] || 0) + d;
+      totalSpeech += d;
+    });
+
+    const sortedSpks = Object.keys(durs).sort((a, b) => durs[b] - durs[a]);
+    sortedSpks.forEach((spk, idx) => {
+      const col = getColor(spk);
+      const pct = totalSpeech > 0 ? ((durs[spk] / totalSpeech) * 100).toFixed(1) : '0.0';
+      const isSolo = (soloSpeakerName === spk);
+
+      const card = document.createElement('div');
+      card.className = 'spk-card' + (isSolo ? ' active-solo-card' : '');
+      card.title = 'Click to Isolate (Solo) this speaker or clear isolation';
+      card.onclick = () => setSoloSpeaker(spk);
+      card.innerHTML = `
+        <div class="spk-card-top">
+          <span class="badge" style="background:${col};">${spk}</span>
+          <span style="font-size:10.5px;color:${isSolo ? '#4ade80' : '#94a3b8'};font-weight:700;">${isSolo ? '🎯 SOLO' : pct + '%'}</span>
+        </div>
+        <div class="spk-meta">
+          <span>${counts[spk]} turns</span>
+          <span>${durs[spk].toFixed(1)}s</span>
+        </div>
+        <div class="spk-bar-bg">
+          <div class="spk-bar-fill" style="width:${pct}%;background:${col};"></div>
+        </div>
+      `;
+      strip.appendChild(card);
+
+      const btn = document.createElement('button');
+      btn.className = 'ghost sm';
+      btn.style.borderLeft = `4px solid ${col}`;
+      btn.innerHTML = `<span class="kbd">${idx + 1}</span> ${spk}`;
+      btn.onclick = () => assignToSelectedOrInput(spk);
+      qBtns.appendChild(btn);
+    });
+  }
+
+  function renderAll() {
+    const wrap = document.getElementById('tableWrap');
+    const savedScroll = wrap.scrollTop;
+    const tbody = document.getElementById('segTableBody');
+    tbody.innerHTML = '';
+    const spkSet = new Set();
+
+    segments.forEach((seg, i) => {
+      spkSet.add(seg.speaker);
+      const tr = document.createElement('tr');
+      tr.id = 'row-' + i;
+      if (i === activeSegIndex) tr.classList.add('selected-row');
+      if (soloSpeakerName && seg.speaker !== soloSpeakerName) tr.classList.add('hidden-by-solo');
+      tr.addEventListener('click', () => selectRow(i));
+
+      const dur = Math.max(0, seg.end - seg.start).toFixed(2);
+      const col = getColor(seg.speaker);
+      const safeText = (seg.text || '').replace(/"/g, '&quot;');
+
+      tr.innerHTML = `
+        <td><b>${i + 1}</b></td>
+        <td>
+          <button class="sm" onclick="event.stopPropagation(); playSegment(${i})">▶ (${dur}s)</button>
+          <button class="ghost sm" onclick="event.stopPropagation(); stopPlayback()" title="Stop">⏹</button>
+        </td>
+        <td>
+          <span class="badge" id="badge-${i}" style="background:${col};margin-right:4px;cursor:pointer;"
+                title="Click to isolate (Solo) this speaker"
+                onclick="event.stopPropagation(); setSoloSpeaker(segments[${i}].speaker);">
+            🎯
+          </span>
+          <input type="text" id="spk-input-${i}" value="${seg.speaker}" style="width:130px;"
+                 onfocus="selectRow(${i})"
+                 onchange="updateSpkInPlace(${i}, this.value)" />
+        </td>
+        <td>
+          <input type="text" class="transcript-input" id="txt-input-${i}" value="${safeText}"
+                 placeholder="Type or edit spoken transcript..."
+                 onfocus="selectRow(${i})"
+                 onchange="updateTextInPlace(${i}, this.value)" />
+        </td>
+        <td>
+          <button class="ghost sm" onclick="event.stopPropagation(); nudgeInPlace(${i}, 'start', -0.1)">-</button>
+          <input type="number" id="start-input-${i}" step="0.05" value="${seg.start.toFixed(2)}"
+                 onfocus="selectRow(${i})"
+                 onchange="updateTimeInPlace(${i}, 'start', this.value)" />
+          <button class="ghost sm" onclick="event.stopPropagation(); nudgeInPlace(${i}, 'start', 0.1)">+</button>
+        </td>
+        <td>
+          <button class="ghost sm" onclick="event.stopPropagation(); nudgeInPlace(${i}, 'end', -0.1)">-</button>
+          <input type="number" id="end-input-${i}" step="0.05" value="${seg.end.toFixed(2)}"
+                 onfocus="selectRow(${i})"
+                 onchange="updateTimeInPlace(${i}, 'end', this.value)" />
+          <button class="ghost sm" onclick="event.stopPropagation(); nudgeInPlace(${i}, 'end', 0.1)">+</button>
+        </td>
+        <td id="dur-cell-${i}" style="font-weight:700;">${dur}s</td>
+        <td>
+          <button class="cyan sm" onclick="event.stopPropagation(); splitRowInHalf(${i})" title="Split segment in half">✂️</button>
+          <button class="amber sm" onclick="event.stopPropagation(); mergeWithNext(${i})" title="Merge with next row">↓</button>
+          <button class="red sm" onclick="event.stopPropagation(); deleteSeg(${i})" title="Delete row">✖</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    updateSpeakerDropdown(spkSet);
+    renderSpeakerAnalytics();
+    renderTimeline();
+    applySearchFilter();
+    wrap.scrollTop = savedScroll;
+  }
+
+  function updateSpeakerDropdown(spkSet) {
+    if (!spkSet) spkSet = new Set(segments.map(s => s.speaker));
+    const sel = document.getElementById('oldSpkSelect');
+    const prev = sel.value;
+    sel.innerHTML = '';
+    Array.from(spkSet).forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s; opt.textContent = s;
+      sel.appendChild(opt);
+    });
+    if (spkSet.has(prev)) sel.value = prev;
+    const totalSec = segments.reduce((acc, s) => acc + Math.max(0, s.end - s.start), 0);
+    document.getElementById('summaryStats').textContent =
+      `${segments.length} Turns | ${spkSet.size} Speakers | Speech: ${totalSec.toFixed(1)}s`;
+  }
+
+  function renderTimeline() {
+    const tl = document.getElementById('timeline');
+    const cursor = document.getElementById('tlCursor');
+    tl.innerHTML = '';
+    tl.appendChild(cursor);
+    const maxEnd = Math.max(player.duration || 0, ...segments.map(s => s.end), 1);
+    segments.forEach((seg) => {
+      const div = document.createElement('div');
+      div.className = 'tl-seg' + (soloSpeakerName && seg.speaker !== soloSpeakerName ? ' dimmed' : '');
+      div.style.left = ((seg.start / maxEnd) * 100) + '%';
+      div.style.width = Math.max(0.18, ((seg.end - seg.start) / maxEnd) * 100) + '%';
+      div.style.background = getColor(seg.speaker);
+      div.textContent = seg.speaker;
+      tl.appendChild(div);
+    });
+  }
+
+  document.getElementById('timeline').addEventListener('click', (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const ratio = (e.clientX - rect.left) / rect.width;
+    const maxEnd = Math.max(player.duration || 0, ...segments.map(s => s.end), 1);
+    stopSegmentWatcher();
+    player.currentTime = ratio * maxEnd;
+    player.play();
+  });
+
+  function stopSegmentWatcher() {
+    if (segmentEndTimer !== null) {
+      clearInterval(segmentEndTimer);
+      segmentEndTimer = null;
+    }
+  }
+
+  function stopPlayback() {
+    soloQueueIndices = [];
+    stopSegmentWatcher();
+    player.pause();
+  }
+
+  function playSegment(i, fromSoloQueue = false) {
+    const seg = segments[i];
+    if (!seg) return;
+    if (!fromSoloQueue) soloQueueIndices = [];
+    selectRow(i);
+    stopSegmentWatcher();
+    player.currentTime = seg.start;
+    player.play();
+
+    segmentEndTimer = setInterval(() => {
+      const curSeg = segments[i];
+      if (!curSeg || player.paused) {
+        stopSegmentWatcher();
+        return;
+      }
+      if (player.currentTime >= curSeg.end - 0.015) {
+        if (soloQueueIndices.length > 0 && soloQueuePos + 1 < soloQueueIndices.length) {
+          soloQueuePos++;
+          const nextIdx = soloQueueIndices[soloQueuePos];
+          const nextRow = document.getElementById('row-' + nextIdx);
+          if (nextRow) nextRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          playSegment(nextIdx, true);
+        } else if (document.getElementById('loopSegmentChk').checked) {
+          player.currentTime = curSeg.start;
+        } else {
+          player.pause();
+          player.currentTime = curSeg.end;
+          soloQueueIndices = [];
+          stopSegmentWatcher();
+        }
+      }
+    }, 15);
+  }
+
+  function playAllTurnsOfSoloSpeaker() {
+    if (!soloSpeakerName) return;
+    soloQueueIndices = [];
+    segments.forEach((seg, idx) => {
+      if (seg.speaker === soloSpeakerName) soloQueueIndices.push(idx);
+    });
+    if (soloQueueIndices.length === 0) return;
+    soloQueuePos = 0;
+    playSegment(soloQueueIndices[0], true);
+  }
+
+  let lastTimeSave = 0;
+  player.addEventListener('timeupdate', () => {
+    const t = player.currentTime || 0;
+    const maxEnd = Math.max(player.duration || 0, ...segments.map(s => s.end), 1);
+    document.getElementById('tlCursor').style.left = ((t / maxEnd) * 100) + '%';
+    document.getElementById('curTimeLabel').textContent = `${formatMMSS(t)} (${t.toFixed(2)}s)`;
+
+    if (Date.now() - lastTimeSave > 2500) {
+      lastTimeSave = Date.now();
+      saveWorkspaceState();
+    }
+
+    let curIdx = -1;
+    for (let i = 0; i < segments.length; i++) {
+      if (t >= segments[i].start && t <= segments[i].end) {
+        curIdx = i;
+        break;
+      }
+    }
+    if (curIdx !== -1 && curIdx !== playingSegIndex) {
+      playingSegIndex = curIdx;
+      updateLiveCaption(segments[curIdx]);
+      document.querySelectorAll('#segTableBody tr').forEach((tr, idx) => {
+        if (idx === curIdx) tr.classList.add('playing-row');
+        else tr.classList.remove('playing-row');
+      });
+      if (document.getElementById('autoFollowChk').checked && segmentEndTimer === null && !player.paused) {
+        const r = document.getElementById('row-' + curIdx);
+        if (r) r.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  });
+
+  document.getElementById('tableWrap').addEventListener('scroll', () => {
+    if (Date.now() - lastTimeSave > 1500) {
+      lastTimeSave = Date.now();
+      saveWorkspaceState();
+    }
+  });
+
+  function updateSpkInPlace(i, val) {
+    pushUndo();
+    const clean = val.trim().replace(/\s+/g, '_') || 'speaker_0';
+    segments[i].speaker = clean;
+    const inp = document.getElementById('spk-input-' + i);
+    if (inp) inp.value = clean;
+    const badge = document.getElementById('badge-' + i);
+    if (badge) badge.style.background = getColor(clean);
+    updateSpeakerDropdown();
+    renderSpeakerAnalytics();
+    renderTimeline();
+    updateLiveCaption(segments[i]);
+    saveWorkspaceState();
+  }
+
+  function updateTextInPlace(i, val) {
+    pushUndo();
+    segments[i].text = val;
+    updateLiveCaption(segments[i]);
+    saveWorkspaceState();
+  }
+
+  function updateTimeInPlace(i, field, val) {
+    pushUndo();
+    const num = parseFloat(val);
+    if (!isNaN(num) && num >= 0) {
+      segments[i][field] = +num.toFixed(3);
+      refreshRowDuration(i);
+      renderSpeakerAnalytics();
+      renderTimeline();
+      saveWorkspaceState();
+    }
+  }
+
+  function nudgeInPlace(i, field, delta) {
+    pushUndo();
+    selectRow(i);
+    segments[i][field] = Math.max(0, +(segments[i][field] + delta).toFixed(3));
+    const inp = document.getElementById(field + '-input-' + i);
+    if (inp) inp.value = segments[i][field].toFixed(2);
+    refreshRowDuration(i);
+    renderSpeakerAnalytics();
+    renderTimeline();
+    saveWorkspaceState();
+  }
+
+  function snapSelectedToCurrentTime(field) {
+    if (activeSegIndex === null || !segments[activeSegIndex]) return;
+    pushUndo();
+    const t = +(player.currentTime || 0).toFixed(2);
+    segments[activeSegIndex][field] = t;
+    const inp = document.getElementById(field + '-input-' + activeSegIndex);
+    if (inp) inp.value = t.toFixed(2);
+    refreshRowDuration(activeSegIndex);
+    renderSpeakerAnalytics();
+    renderTimeline();
+    saveWorkspaceState();
+  }
+
+  function splitSelectedAtCurrentTime() {
+    const t = +(player.currentTime || 0).toFixed(2);
+    let idx = activeSegIndex;
+    if (idx === null || !segments[idx] || t <= segments[idx].start || t >= segments[idx].end) {
+      idx = segments.findIndex(s => t > s.start + 0.08 && t < s.end - 0.08);
+    }
+    if (idx === -1 || idx === null || !segments[idx]) return;
+    const seg = segments[idx];
+    if (t <= seg.start + 0.05 || t >= seg.end - 0.05) {
+      splitRowInHalf(idx);
+      return;
+    }
+    pushUndo();
+    const secondHalf = { start: t, end: seg.end, speaker: seg.speaker, text: seg.text ? '(cont.) ' + seg.text : '' };
+    seg.end = t;
+    segments.splice(idx + 1, 0, secondHalf);
+    activeSegIndex = idx + 1;
+    renderAll();
+    saveWorkspaceState();
+  }
+
+  function splitRowInHalf(i) {
+    const seg = segments[i];
+    if (!seg || (seg.end - seg.start) < 0.2) return;
+    pushUndo();
+    const mid = +((seg.start + seg.end) / 2).toFixed(2);
+    const words = (seg.text || '').split(/\s+/);
+    const halfW = Math.ceil(words.length / 2);
+    const txt1 = words.slice(0, halfW).join(' ');
+    const txt2 = words.slice(halfW).join(' ');
+    const secondHalf = { start: mid, end: seg.end, speaker: seg.speaker, text: txt2 };
+    seg.end = mid;
+    seg.text = txt1;
+    segments.splice(i + 1, 0, secondHalf);
+    activeSegIndex = i + 1;
+    renderAll();
+    saveWorkspaceState();
+  }
+
+  function refreshRowDuration(i) {
+    const dur = Math.max(0, segments[i].end - segments[i].start).toFixed(2);
+    const cell = document.getElementById('dur-cell-' + i);
+    if (cell) cell.textContent = dur + 's';
+  }
+
+  function deleteSeg(i) {
+    pushUndo();
+    stopPlayback();
+    segments.splice(i, 1);
+    if (activeSegIndex === i) activeSegIndex = null;
+    renderAll();
+    saveWorkspaceState();
+  }
+
+  function mergeWithNext(i) {
+    if (i + 1 >= segments.length) return;
+    pushUndo();
+    stopPlayback();
+    segments[i].end = Math.max(segments[i].end, segments[i + 1].end);
+    if (segments[i + 1].text) {
+      segments[i].text = ((segments[i].text || '') + ' ' + segments[i + 1].text).trim();
+    }
+    segments.splice(i + 1, 1);
+    activeSegIndex = i;
+    renderAll();
+    saveWorkspaceState();
+  }
+
+  function addSegmentAtCurrentTime() {
+    pushUndo();
+    const t = +(player.currentTime || 0).toFixed(2);
+    const spk = soloSpeakerName || 'speaker_0';
+    segments.push({ start: t, end: +(t + 2.5).toFixed(2), speaker: spk, text: '' });
+    sortSegments();
+  }
+
+  function assignToSelectedOrInput(name) {
+    document.getElementById('newSpkInput').value = name;
+    if (activeSegIndex !== null && segments[activeSegIndex]) {
+      updateSpkInPlace(activeSegIndex, name);
+    }
+  }
+
+  function renameSpeakerGlobal() {
+    const oldName = document.getElementById('oldSpkSelect').value;
+    const newName = document.getElementById('newSpkInput').value.trim().replace(/\s+/g, '_');
+    if (!oldName || !newName) return;
+    pushUndo();
+    segments.forEach(s => { if (s.speaker === oldName) s.speaker = newName; });
+    if (soloSpeakerName === oldName) soloSpeakerName = newName;
+    renderAll();
+    saveWorkspaceState();
+  }
+
+  // Global Keyboard Shortcuts
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      undoLastAction();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) {
+      e.preventDefault();
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      redoLastAction();
+      return;
+    }
+    const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (e.key === ' ') {
+      e.preventDefault();
+      if (player.paused && activeSegIndex !== null) playSegment(activeSegIndex);
+      else stopPlayback();
+    } else if (e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      splitSelectedAtCurrentTime();
+    } else if (e.key >= '1' && e.key <= '9') {
+      const btns = document.querySelectorAll('#quickSpeakerButtons button');
+      const idx = parseInt(e.key, 10) - 1;
+      if (btns[idx]) btns[idx].click();
+    }
+  });
+
+  function downloadFile(content, filename, mime = 'text/plain;charset=utf-8') {
+    const blob = new Blob([content], { type: mime });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+  }
+
+  function exportRTTM() {
+    const uri = document.getElementById('fileUri').value.trim() || 'video_10_part_03';
+    const sorted = [...segments].filter(s => s.end > s.start).sort((a, b) => a.start - b.start);
+    const lines = sorted.map(
+      s => `SPEAKER ${uri} 1 ${s.start.toFixed(3)} ${(s.end - s.start).toFixed(3)} <NA> <NA> ${s.speaker} <NA> <NA>`
+    );
+    downloadFile(lines.join('\n') + '\n', `${uri}_ground_truth.rttm`);
+  }
+
+  function exportCSV() {
+    const uri = document.getElementById('fileUri').value.trim() || 'video_10_part_03';
+    const sorted = [...segments].filter(s => s.end > s.start).sort((a, b) => a.start - b.start);
+    const rows = ['Turn,Start,End,Duration,Speaker,Text'];
+    sorted.forEach((s, i) => {
+      const dur = (s.end - s.start).toFixed(2);
+      const cleanTxt = '"' + (s.text || '').replace(/"/g, '""') + '"';
+      rows.push(`${i+1},${s.start.toFixed(2)},${s.end.toFixed(2)},${dur},${s.speaker},${cleanTxt}`);
+    });
+    downloadFile('\uFEFF' + rows.join('\n') + '\n', `${uri}_speaker_transcript.csv`, 'text/csv;charset=utf-8');
+  }
+
+  function exportJSON() {
+    const uri = document.getElementById('fileUri').value.trim() || 'video_10_part_03';
+    const sorted = [...segments].filter(s => s.end > s.start).sort((a, b) => a.start - b.start);
+    downloadFile(JSON.stringify({ episode_id: uri, total_turns: sorted.length, turns: sorted }, null, 2), `${uri}_phase2_dialogue.json`, 'application/json;charset=utf-8');
+  }
+
+  function exportAudacity() {
+    const uri = document.getElementById('fileUri').value.trim() || 'video_10_part_03';
+    const sorted = [...segments].filter(s => s.end > s.start).sort((a, b) => a.start - b.start);
+    const lines = sorted.map(s => `${s.start.toFixed(3)}\t${s.end.toFixed(3)}\t${s.speaker}`);
+    downloadFile(lines.join('\n') + '\n', `${uri}_audacity_labels.txt`);
+  }
+
+  // Startup: Restore last saved session + last video file + exact playhead second!
+  window.addEventListener('DOMContentLoaded', () => {
+    const restored = restoreWorkspaceState();
+    if (!restored) {
+      switchEpisodePreset('video_10_part_03');
+    }
+    restoreMediaFileFromDB(restored ? (restored.currentTime || 0) : 0);
+    undoStack = [];
+    redoStack = [];
+    updateUndoRedoButtons();
+  });
+</script>
+</body>
+</html>
